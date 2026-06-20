@@ -1,60 +1,111 @@
-import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, Square, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { FileText, Loader2, Pause, Play, Square, Trash2 } from 'lucide-react'
+import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import toast from 'react-hot-toast'
+import { useNavigate } from 'react-router-dom'
 import api from '../lib/axios'
+import AnimatedPage from '../components/AnimatedPage'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
+import MetricCard from '../components/ui/MetricCard'
+import EmptyState from '../components/ui/EmptyState'
 
 export default function TimeTracker() {
   const [logs, setLogs] = useState([])
   const [projects, setProjects] = useState([])
+  const [clients, setClients] = useState([])
   const [seconds, setSeconds] = useState(0)
   const [running, setRunning] = useState(false)
   const [form, setForm] = useState({ project: '', description: '', hourlyRate: 0 })
+  const [invoiceModal, setInvoiceModal] = useState(false)
+  const [invoiceForm, setInvoiceForm] = useState({ projectId: '', clientId: '', tax: 18, dueDate: '', notes: '' })
+  const [invoiceLoading, setInvoiceLoading] = useState(false)
   const intervalRef = useRef(null)
+  const navigate = useNavigate()
+
+  const fetchLogs = async () => {
+    try {
+      const { data } = await api.get('/timelogs')
+      setLogs(data.logs || [])
+    } catch (err) {
+      console.error('Failed to load logs:', err.message)
+      toast.error('Failed to load logs')
+    }
+  }
+
+  const fetchProjects = async () => {
+    try {
+      const { data } = await api.get('/projects')
+      setProjects(data.projects || [])
+    } catch (err) {
+      console.error('Failed to load projects:', err.message)
+      toast.error('Failed to load projects')
+    }
+  }
+
+  const fetchClients = async () => {
+    try {
+      const { data } = await api.get('/clients')
+      setClients(data.clients || [])
+    } catch (err) {
+      console.error('Failed to load clients:', err.message)
+      toast.error('Failed to load clients')
+    }
+  }
 
   useEffect(() => {
     fetchLogs()
     fetchProjects()
+    fetchClients()
   }, [])
 
   useEffect(() => {
     if (running) {
-      intervalRef.current = setInterval(() => setSeconds(s => s + 1), 1000)
+      intervalRef.current = setInterval(() => setSeconds((value) => value + 1), 1000)
     } else {
       clearInterval(intervalRef.current)
     }
     return () => clearInterval(intervalRef.current)
   }, [running])
 
-  async function fetchLogs() {
-    try {
-      const { data } = await api.get('/timelogs')
-      setLogs(data.logs)
-    } catch {
-      toast.error('Failed to load logs')
-    }
-  }
+  const unbilledCount = useMemo(
+    () => logs.filter((log) => !log.billed && Number(log.hourlyRate || 0) > 0).length,
+    [logs]
+  )
 
-  async function fetchProjects() {
-    try {
-      const { data } = await api.get('/projects')
-      setProjects(data.projects)
-    } catch {}
+  const totalMinutes = useMemo(() => logs.reduce((sum, log) => sum + Number(log.duration || 0), 0), [logs])
+  const totalHours = (totalMinutes / 60).toFixed(1)
+
+  const chartData = useMemo(() => {
+    return logs.slice().reverse().slice(-14).map((log, index) => ({
+      name: `${index + 1}`,
+      minutes: Number(log.duration || 0),
+    }))
+  }, [logs])
+
+  const formatTime = (secs) => {
+    const h = Math.floor(secs / 3600)
+    const m = Math.floor((secs % 3600) / 60)
+    const s = secs % 60
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
 
   const handleStop = async () => {
     setRunning(false)
     if (seconds < 60) {
-      toast.error('Track at least 1 minute!')
+      toast.error('Track at least 1 minute')
       setSeconds(0)
       return
     }
+
     try {
       await api.post('/timelogs', {
         ...form,
         duration: Math.floor(seconds / 60),
       })
-      toast.success('Time logged!')
+      toast.success('Time logged')
       setSeconds(0)
+      setForm({ project: '', description: '', hourlyRate: 0 })
       fetchLogs()
     } catch {
       toast.error('Failed to save log')
@@ -64,170 +115,273 @@ export default function TimeTracker() {
   const handleDelete = async (id) => {
     try {
       await api.delete(`/timelogs/${id}`)
-      toast.success('Deleted!')
+      toast.success('Log deleted')
       fetchLogs()
     } catch {
-      toast.error('Failed to delete')
+      toast.error('Failed to delete log')
     }
   }
 
-  const formatTime = (secs) => {
-    const h = Math.floor(secs / 3600)
-    const m = Math.floor((secs % 3600) / 60)
-    const s = secs % 60
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  const handleGenerateInvoice = async () => {
+    if (!invoiceForm.projectId || !invoiceForm.clientId) {
+      toast.error('Select both project and client')
+      return
+    }
+    setInvoiceLoading(true)
+    try {
+      await api.post('/invoices/from-timelogs', invoiceForm)
+      toast.success('Invoice generated from time logs')
+      setInvoiceModal(false)
+      setInvoiceForm({ projectId: '', clientId: '', tax: 18, dueDate: '', notes: '' })
+      fetchLogs()
+      setTimeout(() => navigate('/invoices'), 700)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to generate invoice')
+    } finally {
+      setInvoiceLoading(false)
+    }
   }
 
-  const totalMinutes = logs.reduce((acc, log) => acc + log.duration, 0)
-  const totalHours = (totalMinutes / 60).toFixed(1)
-
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-gray-250 p-6 md:p-8 relative overflow-hidden">
-      {/* Glow backgrounds */}
-      <div className="absolute top-10 left-1/4 w-80 h-80 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
-
-      <div className="max-w-4xl mx-auto space-y-8 relative z-10">
-        
-        {/* Header */}
-        <div className="border-b border-white/[0.04] pb-6">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">Time Tracker</h1>
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mt-1.5">
-            Log billable hours, rates, and projects in real-time
-          </p>
-        </div>
-
-        {/* Digital Timer Panel */}
-        <div className="bg-[#111118]/60 backdrop-blur-md rounded-3xl p-8 border border-white/[0.04] shadow-2xl text-center relative overflow-hidden">
-          <div className="absolute -top-12 -left-12 w-24 h-24 rounded-full bg-indigo-500/5 blur-xl pointer-events-none" />
-          
-          <div className="text-7xl font-mono font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-indigo-300 to-purple-400 tracking-wider drop-shadow-[0_0_20px_rgba(99,102,241,0.2)]">
-            {formatTime(seconds)}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8 text-left">
-            <div>
-              <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Associated Project</label>
-              <select
-                value={form.project}
-                onChange={(e) => setForm({ ...form, project: e.target.value })}
-                disabled={running}
-                className="w-full bg-[#0a0a0f]/80 text-white text-sm rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all cursor-pointer"
-              >
-                <option value="">Select project</option>
-                {projects.map((p) => <option key={p._id} value={p._id}>{p.title}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Hourly Rate (₹)</label>
-              <input
-                type="number"
-                value={form.hourlyRate}
-                onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
-                disabled={running}
-                placeholder="1500"
-                className="w-full bg-[#0a0a0f]/80 text-white text-sm rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-650"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">What are you working on?</label>
-              <input
-                type="text"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                disabled={running}
-                placeholder="Description of task deliverables..."
-                className="w-full bg-[#0a0a0f]/80 text-white text-sm rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-655"
-              />
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="flex justify-center gap-4">
-            {!running ? (
-              <button
-                onClick={() => setRunning(true)}
-                className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-650 hover:from-emerald-500 hover:to-teal-550 text-white text-sm font-bold px-8 py-3.5 rounded-xl transition duration-200 shadow-md shadow-emerald-500/10 active:scale-95 cursor-pointer"
-              >
-                <Play size={16} /> Start Tracker
+    <AnimatedPage className="page-container space-y-8">
+      <PageHeader
+        eyebrow="Billable Time"
+        title="Time Tracker"
+        description="Track billable work in a focused timer, then convert unbilled logs directly into invoices."
+        actions={(
+          <>
+            {unbilledCount > 0 ? (
+              <button onClick={() => setInvoiceModal(true)} className="btn-secondary">
+                <FileText size={16} /> Generate invoice <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px]">{unbilledCount}</span>
               </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => setRunning(false)}
-                  className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-yellow-650 hover:from-amber-500 hover:to-yellow-550 text-white text-sm font-bold px-6 py-3.5 rounded-xl transition duration-200 shadow-md active:scale-95 cursor-pointer"
-                >
-                  <Pause size={16} /> Pause
-                </button>
-                <button
-                  onClick={handleStop}
-                  className="flex items-center gap-2 bg-gradient-to-r from-red-650 to-rose-600 hover:from-red-550 hover:to-rose-500 text-white text-sm font-bold px-6 py-3.5 rounded-xl transition duration-205 shadow-md active:scale-95 cursor-pointer"
-                >
-                  <Square size={16} /> Save Log
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+            ) : null}
+          </>
+        )}
+      />
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur-md shadow-lg">
-            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Accumulated Hours</p>
-            <p className="text-3xl font-black mt-2 text-indigo-400 tracking-tight">{totalHours}h</p>
-          </div>
-          <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur-md shadow-lg">
-            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Total Active Sessions</p>
-            <p className="text-3xl font-black mt-2 text-white tracking-tight">{logs.length}</p>
-          </div>
-        </div>
+      <div className="grid gap-5 md:grid-cols-3">
+        <MetricCard label="Tracked hours" value={`${totalHours}h`} accent="indigo" />
+        <MetricCard label="Sessions" value={logs.length} accent="emerald" />
+        <MetricCard label="Unbilled logs" value={unbilledCount} accent="amber" />
+      </div>
 
-        {/* Logs Register */}
-        <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl shadow-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-white/[0.04]">
-            <h2 className="text-base font-bold text-white">Time Logs History</h2>
+      <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+        <SurfaceCard className="space-y-6">
+          <div>
+            <p className="text-lg font-semibold text-slate-50">Live timer</p>
+            <p className="text-sm text-slate-400">Pick a project, set a rate, and start tracking instantly.</p>
           </div>
-          {logs.length === 0 ? (
-            <div className="p-10 text-center text-gray-500 text-xs italic">
-              No previous logs recorded — start tracking above to log hours!
+
+          <div className="rounded-[32px] p-6 text-center" style={{ background: 'var(--bg-soft)', border: '1px solid var(--border-soft)' }}>
+            <p className="font-mono text-6xl font-semibold tracking-[0.18em] text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-white to-cyan-300">
+              {formatTime(seconds)}
+            </p>
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Project</label>
+                <select
+                  value={form.project}
+                  onChange={(event) => setForm({ ...form, project: event.target.value })}
+                  disabled={running}
+                  className="input-shell w-full"
+                >
+                  <option value="">Select project</option>
+                  {projects.map((project) => (
+                    <option key={project._id} value={project._id}>{project.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Hourly rate</label>
+                <input
+                  type="number"
+                  value={form.hourlyRate}
+                  onChange={(event) => setForm({ ...form, hourlyRate: event.target.value })}
+                  disabled={running}
+                  className="input-shell w-full"
+                  placeholder="1500"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm text-slate-300">Work description</label>
+                <input
+                  type="text"
+                  value={form.description}
+                  onChange={(event) => setForm({ ...form, description: event.target.value })}
+                  disabled={running}
+                  className="input-shell w-full"
+                  placeholder="Design polish, bug fixes, product updates..."
+                />
+              </div>
             </div>
-          ) : (
-            <div className="divide-y divide-white/[0.03]">
-              {logs.map((log) => (
-                <div key={log._id} className="p-4.5 flex justify-between items-center hover:bg-white/[0.01] transition group">
-                  <div className="space-y-1 pr-4 min-w-0">
-                    <p className="font-bold text-white text-sm truncate">{log.description || 'Untitled Session'}</p>
-                    <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
-                      {log.project && (
-                        <span className="text-[10px] font-bold uppercase bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/10">
-                          {log.project.title}
-                        </span>
-                      )}
-                      <span>•</span>
-                      <span>Duration: {log.duration} mins</span>
-                      {log.hourlyRate > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-emerald-400 font-semibold">
-                            Earnings: ₹{((log.duration / 60) * log.hourlyRate).toFixed(0)}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <button 
-                    onClick={() => handleDelete(log._id)} 
-                    className="opacity-0 group-hover:opacity-100 p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition"
-                    title="Delete log"
-                  >
-                    <Trash2 size={15} />
+
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              {!running ? (
+                <button onClick={() => setRunning(true)} className="btn-primary">
+                  <Play size={16} /> Start
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => setRunning(false)} className="btn-secondary">
+                    <Pause size={16} /> Pause
                   </button>
+                  <button onClick={handleStop} className="btn-primary">
+                    <Square size={16} /> Save log
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {chartData.length > 0 ? (
+            <div className="h-[220px] rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-medium text-slate-100">Recent activity</p>
+                <span className="text-xs text-slate-500">Last 14 logs</span>
+              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="timeFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#6366F1" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="#6366F1" stopOpacity={0.04} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                  <XAxis dataKey="name" stroke="#64748b" tickLine={false} axisLine={false} />
+                  <YAxis stroke="#64748b" tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'var(--tooltip-bg)', border: '1px solid var(--tooltip-border)', borderRadius: '18px', color: 'var(--text)' }}
+                    formatter={(value) => [`${value} mins`, 'Duration']}
+                  />
+                  <Area type="monotone" dataKey="minutes" stroke="#818cf8" strokeWidth={2.5} fill="url(#timeFill)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
+        </SurfaceCard>
+
+        <SurfaceCard className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-lg font-semibold text-slate-50">Time logs</p>
+              <p className="text-sm text-slate-400">All saved sessions, rate details, and billing readiness.</p>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-slate-400">
+              {logs.length} entries
+            </span>
+          </div>
+
+          {logs.length === 0 ? (
+            <EmptyState
+              icon={Play}
+              title="No time logs yet"
+              description="Start the timer and your sessions will appear here with billing readiness details."
+            />
+          ) : (
+            <div className="space-y-3">
+              {logs.map((log) => (
+                <div key={log._id} className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4 transition hover:bg-white/[0.05]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-50">{log.description || 'Untitled session'}</p>
+                        {log.billed ? <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 text-[11px] text-sky-300">Billed</span> : null}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {log.project?.title || 'No project'} • {Number(log.duration || 0)} mins
+                        {Number(log.hourlyRate || 0) > 0 ? ` • ₹${((Number(log.duration || 0) / 60) * Number(log.hourlyRate || 0)).toFixed(0)}` : ''}
+                      </p>
+                    </div>
+                    <button onClick={() => handleDelete(log._id)} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-slate-400 transition hover:text-rose-200 hover:bg-rose-500/10">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </SurfaceCard>
       </div>
-    </div>
+
+      {invoiceModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+          <div className="w-full max-w-xl rounded-[32px] border border-white/10 bg-slate-950/92 p-6 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="section-eyebrow">Invoice from logs</p>
+                <h2 className="mt-3 text-2xl font-semibold text-slate-50">Generate invoice</h2>
+                <p className="mt-2 text-sm text-slate-400">Convert unbilled time logs into a professional invoice.</p>
+              </div>
+              <button onClick={() => setInvoiceModal(false)} className="btn-secondary px-3 py-2">
+                ×
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Project</label>
+                <select
+                  value={invoiceForm.projectId}
+                  onChange={(event) => setInvoiceForm({ ...invoiceForm, projectId: event.target.value })}
+                  className="input-shell w-full"
+                >
+                  <option value="">Select project</option>
+                  {projects.map((project) => (
+                    <option key={project._id} value={project._id}>{project.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Client</label>
+                <select
+                  value={invoiceForm.clientId}
+                  onChange={(event) => setInvoiceForm({ ...invoiceForm, clientId: event.target.value })}
+                  className="input-shell w-full"
+                >
+                  <option value="">Select client</option>
+                  {clients.map((client) => (
+                    <option key={client._id} value={client._id}>{client.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm text-slate-300">GST (%)</label>
+                  <input
+                    type="number"
+                    value={invoiceForm.tax}
+                    onChange={(event) => setInvoiceForm({ ...invoiceForm, tax: Number(event.target.value) })}
+                    className="input-shell w-full"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm text-slate-300">Due date</label>
+                  <input
+                    type="date"
+                    value={invoiceForm.dueDate}
+                    onChange={(event) => setInvoiceForm({ ...invoiceForm, dueDate: event.target.value })}
+                    className="input-shell w-full"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm text-slate-300">Notes</label>
+                <textarea
+                  rows={4}
+                  value={invoiceForm.notes}
+                  onChange={(event) => setInvoiceForm({ ...invoiceForm, notes: event.target.value })}
+                  className="input-shell w-full resize-none"
+                  placeholder="Payment terms and invoice notes..."
+                />
+              </div>
+              <button onClick={handleGenerateInvoice} disabled={invoiceLoading} className="btn-primary w-full justify-center">
+                {invoiceLoading ? <><Loader2 size={16} className="animate-spin" /> Generating...</> : <><FileText size={16} /> Generate invoice</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </AnimatedPage>
   )
 }

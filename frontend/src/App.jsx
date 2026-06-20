@@ -19,6 +19,9 @@ import VerifyEmail from './pages/VerifyEmail'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import AcceptInvite from './pages/AcceptInvite'
+import Proposals from './pages/Proposals'
+import ClientOnboarding from './pages/ClientOnboarding'
+import Profile from './pages/Profile'
 
 
 const PrivateRoute = ({ children }) => {
@@ -51,23 +54,32 @@ export default function App() {
     <BrowserRouter>
       <Toaster position="top-right" />
       <Routes>
+        {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/verify-email" element={<VerifyRoute><VerifyEmail /></VerifyRoute>} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
         <Route path="/accept-invite/:token" element={<AcceptInvite />} />
+        <Route path="/portal/:token" element={<ClientPortal />} />
+        <Route path="/onboarding/:token" element={<ClientOnboarding />} />
+        <Route path="/" element={<Landing />} />
+
+        {/* Admin-only routes */}
         <Route path="/dashboard" element={<AdminRoute><Dashboard /></AdminRoute>} />
         <Route path="/clients" element={<AdminRoute><Clients /></AdminRoute>} />
-        <Route path="/projects" element={<PrivateRoute><Projects /></PrivateRoute>} />
-        <Route path="/time-tracker" element={<PrivateRoute><TimeTracker /></PrivateRoute>} />
         <Route path="/invoices" element={<AdminRoute><Invoices /></AdminRoute>} />
         <Route path="/expenses" element={<AdminRoute><Expenses /></AdminRoute>} />
         <Route path="/contracts" element={<AdminRoute><Contracts /></AdminRoute>} />
         <Route path="/tax-estimator" element={<AdminRoute><TaxEstimator /></AdminRoute>} />
+        <Route path="/proposals" element={<AdminRoute><Proposals /></AdminRoute>} />
+
+        {/* All authenticated users */}
+        <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+        <Route path="/projects" element={<PrivateRoute><Projects /></PrivateRoute>} />
+        <Route path="/time-tracker" element={<PrivateRoute><TimeTracker /></PrivateRoute>} />
         <Route path="/kanban" element={<PrivateRoute><Kanban /></PrivateRoute>} />
-        <Route path="/portal/:token" element={<ClientPortal />} />
-        <Route path="/" element={<Landing />} />
+
         <Route path="*" element={<Navigate to={user?.role === 'admin' ? "/dashboard" : "/projects"} />} />
       </Routes>
     </BrowserRouter>

@@ -58,10 +58,16 @@ exports.getProjects = async (req, res) => {
 
 exports.createProject = async (req, res) => {
   try {
-    const { title, description, client, budget, deadline, status } = req.body;
+    const { title, description, client, budget, deadline, status, tags } = req.body;
     if (!title) return res.status(400).json({ message: 'Title required' });
     const project = await Project.create({
-      title, description, client, budget, deadline, status,
+      title,
+      description,
+      client,
+      budget,
+      deadline,
+      status,
+      tags: Array.isArray(tags) ? tags : (typeof tags === 'string' && tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : []),
       freelancer: req.user._id,
     });
     res.status(201).json({ project });
@@ -101,7 +107,13 @@ exports.addTask = async (req, res) => {
   try {
     const project = await findProjectForTaskAccess(req.params.id, req.user);
     if (!project) return res.status(404).json({ message: 'Project not found' });
-    project.tasks.push({ title: req.body.title });
+    project.tasks.push({
+      title: req.body.title,
+      status: req.body.status || 'todo',
+      priority: req.body.priority || 'medium',
+      dueDate: req.body.dueDate || undefined,
+      tags: Array.isArray(req.body.tags) ? req.body.tags : (typeof req.body.tags === 'string' && req.body.tags ? req.body.tags.split(',').map(t => t.trim()).filter(Boolean) : []),
+    });
     await project.save();
     res.json({ project });
   } catch (err) {
@@ -208,12 +220,16 @@ exports.generateShareToken = async (req, res) => {
 exports.getPublicProject = async (req, res) => {
   try {
     const project = await Project.findOne({ shareToken: req.params.token })
-      .populate('client', 'name company')
-      .populate('freelancer', 'name');
+      .populate('client', 'name company email phone address')
+      .populate('freelancer', 'name email');
 
     if (!project) return res.status(404).json({ message: 'Public project portal not found' });
 
-    res.json({ project });
+    const Invoice = require('../models/Invoice');
+    const invoices = await Invoice.find({ project: project._id })
+      .sort({ createdAt: -1 });
+
+    res.json({ project, invoices });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

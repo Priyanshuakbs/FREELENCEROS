@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { MessageSquare, X, Send, Sparkles } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
+import { MessageSquare, Send, Sparkles, X } from 'lucide-react'
 import api from '../lib/axios'
 
 const SUGGESTIONS = [
-  { text: '📊 Dashboard Stats', query: 'Show my dashboard summary' },
-  { text: '💰 Total Earnings', query: 'How much revenue have I earned?' },
-  { text: '💳 List Expenses', query: 'Show my expenses list' },
-  { text: '✉️ Draft Reminder Email', query: 'Draft a payment reminder email' },
+  { label: 'Dashboard Summary', query: 'Show my dashboard summary' },
+  { label: 'Revenue Snapshot', query: 'How much revenue have I earned?' },
+  { label: 'Expense Overview', query: 'Show my expenses list' },
+  { label: 'Payment Reminder', query: 'Draft a payment reminder email' },
 ]
 
 export default function ChatbotWidget() {
@@ -16,48 +16,41 @@ export default function ChatbotWidget() {
     {
       id: 'welcome',
       sender: 'bot',
-      text: 'Hi! I am your **FreelanceOS Assistant**. Ask me about your revenue, expenses, clients, or request me to draft invoices and email reminders!',
+      text: 'Hi! I am your FreelanceOS Assistant. Ask me about revenue, expenses, invoices, or drafting client messages.',
     },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef(null)
 
-  useEffect(() => {
-    if (isOpen) {
-      scrollToBottom()
-    }
-  }, [messages, isOpen])
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
+
+  useEffect(() => {
+    if (isOpen) scrollToBottom()
+  }, [isOpen, messages])
 
   const handleSend = async (queryText) => {
     const textToSend = queryText || input
     if (!textToSend.trim()) return
 
-    // Clear input if sending from input box
     if (!queryText) setInput('')
 
-    // Add user message
-    const userMsgId = Date.now().toString()
-    setMessages((prev) => [...prev, { id: userMsgId, sender: 'user', text: textToSend }])
+    const userId = crypto.randomUUID()
+    setMessages((prev) => [...prev, { id: userId, sender: 'user', text: textToSend }])
     setLoading(true)
 
     try {
       const { data } = await api.post('/chatbot', { message: textToSend })
-      setMessages((prev) => [
-        ...prev,
-        { id: (Date.now() + 1).toString(), sender: 'bot', text: data.reply },
-      ])
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), sender: 'bot', text: data.reply }])
     } catch {
       setMessages((prev) => [
         ...prev,
         {
-          id: (Date.now() + 1).toString(),
+          id: crypto.randomUUID(),
           sender: 'bot',
-          text: 'Sorry, I encountered an issue retrieving that information. Please verify your connection or try again later.',
+          text: 'Sorry, I ran into an issue while fetching that. Please try again in a moment.',
         },
       ])
     } finally {
@@ -65,204 +58,108 @@ export default function ChatbotWidget() {
     }
   }
 
-  // A simple markdown formatting helper
-  const renderFormattedText = (rawText) => {
-    if (!rawText) return ''
-
-    // Split text by code blocks
-    const parts = rawText.split(/(```[\s\S]*?```)/g)
-
-    return parts.map((part, index) => {
-      // If code block
-      if (part.startsWith('```')) {
-        const cleanCode = part.replace(/```(text|javascript|json|html)?/g, '').trim()
-        return (
-          <pre
-            key={index}
-            className="bg-gray-950 border border-gray-800 text-indigo-300 font-mono text-xs p-3 rounded-lg overflow-x-auto my-2 whitespace-pre-wrap select-all cursor-copy"
-            title="Click to select all code"
-          >
-            <code>{cleanCode}</code>
-          </pre>
-        )
-      }
-
-      // Format headers, bold text, bullet points
-      const lines = part.split('\n')
-      return (
-        <span key={index}>
-          {lines.map((line, lineIdx) => {
-            let renderedLine = line
-
-            // Check header (e.g. ### Header)
-            const headerMatch = renderedLine.match(/^(#{1,6})\s+(.*)$/)
-            if (headerMatch) {
-              const level = headerMatch[1].length
-              const text = headerMatch[2]
-              const headerClasses =
-                level === 3 ? 'text-sm font-bold text-white mt-2 mb-1 block' : 'font-semibold text-white mt-1 block'
-              return <span key={lineIdx} className={headerClasses}>{text}</span>
-            }
-
-            // Check list items
-            const listMatch = renderedLine.match(/^([-*])\s+(.*)$/)
-            if (listMatch) {
-              const content = listMatch[2]
-              return (
-                <span key={lineIdx} className="pl-4 py-0.5 flex items-start gap-1 text-gray-300">
-                  <span className="text-indigo-400 font-bold select-none">•</span>
-                  <span>{parseInlineBold(content)}</span>
-                </span>
-              )
-            }
-
-            return (
-              <span key={lineIdx} className="block min-h-[4px]">
-                {parseInlineBold(renderedLine)}
-              </span>
-            )
-          })}
-        </span>
-      )
-    })
-  }
-
-  const parseInlineBold = (text) => {
-    // Splits by **bold** tags
-    const boldParts = text.split(/(\*\*.*?\*\*)/g)
-    return boldParts.map((part, index) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return (
-          <strong key={index} className="font-extrabold text-indigo-300">
-            {part.slice(2, -2)}
-          </strong>
-        )
-      }
-      return part
-    })
-  }
-
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-      {/* Chat Window Panel */}
+    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-4">
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 40, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-            className="w-[380px] max-w-[calc(100vw-32px)] h-[500px] max-h-[calc(100vh-100px)] bg-gray-900/95 border border-gray-800/90 rounded-2xl shadow-2xl flex flex-col overflow-hidden mb-4 backdrop-blur-xl"
+            exit={{ opacity: 0, y: 18, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 250, damping: 24 }}
+            className="flex h-[560px] w-[400px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/92 shadow-2xl backdrop-blur-2xl"
           >
-            {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-indigo-900/40 px-4 py-4 border-b border-gray-800/80 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg">
-                  <Sparkles size={16} className="text-white animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white leading-tight">FreelanceOS Assistant</h3>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    <span className="text-[10px] font-semibold text-emerald-400 select-none">AI Active</span>
+            <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.22),transparent_36%)] px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500">
+                    <Sparkles size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-50">FreelanceOS Assistant</p>
+                    <p className="text-xs text-slate-400">Workspace copilot for billing and ops</p>
                   </div>
                 </div>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="rounded-xl p-2 text-slate-500 transition hover:bg-white/[0.04] hover:text-slate-300"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-white hover:bg-gray-800/60 p-1.5 rounded-lg transition"
-              >
-                <X size={16} />
-              </button>
             </div>
 
-            {/* Messages Scroll Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <AnimatePresence initial={false}>
-                {messages.map((msg) => (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 15, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.25 }}
-                    className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              {messages.map((message) => (
+                <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`max-w-[84%] rounded-3xl px-4 py-3 text-sm leading-6 ${
+                      message.sender === 'user'
+                        ? 'bg-gradient-to-br from-indigo-500 to-violet-500 text-white'
+                        : 'border border-white/10 bg-white/[0.04] text-slate-200'
+                    }`}
                   >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-md transition-all ${
-                        msg.sender === 'user'
-                          ? 'bg-indigo-600 text-white rounded-br-none'
-                          : 'bg-gray-800/70 border border-gray-700/50 text-gray-200 rounded-bl-none'
-                      }`}
-                    >
-                      {renderFormattedText(msg.text)}
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {loading && (
-                <div className="flex items-center gap-1.5 bg-gray-800/40 border border-gray-800/60 w-16 p-3 rounded-2xl rounded-bl-none">
-                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></span>
-                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                    {message.text}
+                  </div>
                 </div>
-              )}
+              ))}
+
+              {loading ? (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-1 rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-indigo-300" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-indigo-300 [animation-delay:0.15s]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-indigo-300 [animation-delay:0.3s]" />
+                  </div>
+                </div>
+              ) : null}
+
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Suggestion Chips */}
-            <div className="px-3 py-2 border-t border-gray-805/40 bg-gray-900/40 overflow-x-auto flex gap-2 no-scrollbar scroll-smooth">
-              {SUGGESTIONS.map((sug) => (
-                <button
-                  key={sug.text}
-                  onClick={() => handleSend(sug.query)}
-                  disabled={loading}
-                  className="whitespace-nowrap bg-gray-800 hover:bg-indigo-600/20 hover:text-indigo-400 border border-gray-750 hover:border-indigo-500/30 text-gray-300 text-xs px-3 py-1.5 rounded-full transition-all shrink-0 disabled:opacity-50"
-                >
-                  {sug.text}
-                </button>
-              ))}
-            </div>
+            <div className="border-t border-white/10 px-3 py-3">
+              <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                {SUGGESTIONS.map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => handleSend(item.query)}
+                    disabled={loading}
+                    className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.07]"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
 
-            {/* Input Box */}
-            <div className="p-3 border-t border-gray-800/80 bg-gray-950/40 flex items-center gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Ask me anything about your business..."
-                className="flex-1 bg-gray-900 text-white placeholder-gray-500 rounded-xl px-4 py-2.5 border border-gray-800 focus:border-indigo-500 focus:outline-none transition-all text-xs"
-                disabled={loading}
-              />
-              <button
-                onClick={() => handleSend()}
-                disabled={loading || !input.trim()}
-                className="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition duration-300 shadow-md disabled:opacity-50"
-              >
-                <Send size={15} />
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && handleSend()}
+                  placeholder="Ask about clients, revenue, invoices..."
+                  disabled={loading}
+                  className="input-shell flex-1"
+                />
+                <button
+                  onClick={() => handleSend()}
+                  disabled={loading || !input.trim()}
+                  className="btn-primary px-4 py-3 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Send size={16} />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Floating Action Trigger Button */}
       <motion.button
-        onClick={() => setIsOpen(!isOpen)}
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.92 }}
-        className="w-14 h-14 bg-gradient-to-tr from-indigo-600 to-purple-600 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-indigo-500/40 focus:outline-none transition-shadow duration-300"
-        title="Open FreelanceOS Assistant"
+        onClick={() => setIsOpen((prev) => !prev)}
+        whileHover={{ scale: 1.04 }}
+        whileTap={{ scale: 0.96 }}
+        className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-[0_28px_50px_-24px_rgba(99,102,241,0.9)]"
       >
-        <motion.div
-          key={isOpen ? 'close' : 'open'}
-          initial={{ rotate: -45, opacity: 0 }}
-          animate={{ rotate: 0, opacity: 1 }}
-          transition={{ duration: 0.2 }}
-        >
-          {isOpen ? <X size={24} /> : <MessageSquare size={24} />}
-        </motion.div>
+        {isOpen ? <X size={22} /> : <MessageSquare size={22} />}
       </motion.button>
     </div>
   )

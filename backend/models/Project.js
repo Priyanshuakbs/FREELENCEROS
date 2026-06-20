@@ -4,11 +4,15 @@ const taskSchema = new mongoose.Schema({
   title: { type: String, required: true },
   completed: { type: Boolean, default: false },
   status: { type: String, enum: ['todo', 'in-progress', 'review', 'done'], default: 'todo' },
+  priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
+  dueDate: { type: Date },
+  tags: [{ type: String, trim: true }],
 });
 
 const projectSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, default: '' },
+  tags: [{ type: String, trim: true }],
   client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
   freelancer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   status: { type: String, enum: ['active', 'completed', 'on-hold'], default: 'active' },

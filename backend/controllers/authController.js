@@ -7,6 +7,26 @@ const generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, {
   expiresIn: process.env.JWT_EXPIRE,
 });
 
+const serializeUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  avatar: user.avatar || '',
+  bio: user.bio || '',
+  title: user.title || '',
+  company: user.company || '',
+  phone: user.phone || '',
+  location: user.location || '',
+  website: user.website || '',
+  linkedin: user.linkedin || '',
+  github: user.github || '',
+  portfolio: user.portfolio || '',
+  plan: user.plan,
+  monthlyGoal: user.monthlyGoal,
+  isVerified: user.isVerified,
+  role: user.role,
+});
+
 exports.register = async (req, res) => {
   console.log('Register hit:', req.body);
   try {
@@ -57,7 +77,7 @@ exports.register = async (req, res) => {
 
     res.status(201).json({
       token: generateToken(user._id),
-      user: { id: user._id, name: user.name, email: user.email, plan: user.plan, monthlyGoal: user.monthlyGoal, isVerified: user.isVerified, role: user.role }
+      user: serializeUser(user)
     });
   } catch (err) {
     console.error('Register error:', err.message);
@@ -74,7 +94,7 @@ exports.login = async (req, res) => {
 
     res.json({
       token: generateToken(user._id),
-      user: { id: user._id, name: user.name, email: user.email, plan: user.plan, isVerified: user.isVerified, role: user.role }
+      user: serializeUser(user)
     });
   } catch (err) {
     console.error('Login error:', err.message);
@@ -84,7 +104,8 @@ exports.login = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
-    res.json({ user: req.user });
+    const user = await User.findById(req.user._id).select('-password');
+    res.json({ user: serializeUser(user) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -103,7 +124,77 @@ exports.updateGoal = async (req, res) => {
       { new: true }
     ).select('-password');
 
-    res.json({ user });
+    res.json({ user: serializeUser(user) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const updates = {
+      name: req.body.name?.trim(),
+      title: req.body.title?.trim() || '',
+      company: req.body.company?.trim() || '',
+      bio: req.body.bio?.trim() || '',
+      phone: req.body.phone?.trim() || '',
+      location: req.body.location?.trim() || '',
+      website: req.body.website?.trim() || '',
+      linkedin: req.body.linkedin?.trim() || '',
+      github: req.body.github?.trim() || '',
+      portfolio: req.body.portfolio?.trim() || '',
+    };
+
+    if (!updates.name) {
+      return res.status(400).json({ message: 'Name is required.' });
+    }
+
+    if (req.file) {
+      updates.avatar = `/uploads/${req.file.filename}`;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      updates,
+      { new: true }
+    ).select('-password');
+
+    res.json({ user: serializeUser(user) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: 'All password fields are required.' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters long.' });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'New passwords do not match.' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const matches = await user.matchPassword(currentPassword);
+    if (!matches) {
+      return res.status(400).json({ message: 'Current password is incorrect.' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ message: 'Password updated successfully.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -136,7 +227,7 @@ exports.verifyOTP = async (req, res) => {
 
     res.json({
       message: 'Email verified successfully!',
-      user: { id: user._id, name: user.name, email: user.email, plan: user.plan, isVerified: true, role: user.role }
+      user: serializeUser(user)
     });
   } catch (err) {
     console.error('Verification error:', err.message);

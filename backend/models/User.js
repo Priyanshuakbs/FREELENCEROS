@@ -6,6 +6,15 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String, required: true, minlength: 6 },
   avatar: { type: String, default: '' },
+  bio: { type: String, default: '' },
+  title: { type: String, default: '' },
+  company: { type: String, default: '' },
+  phone: { type: String, default: '' },
+  location: { type: String, default: '' },
+  website: { type: String, default: '' },
+  linkedin: { type: String, default: '' },
+  github: { type: String, default: '' },
+  portfolio: { type: String, default: '' },
   plan: { type: String, enum: ['free', 'pro', 'business'], default: 'free' },
   currency: { type: String, default: 'INR' },
   role: { type: String, enum: ['admin', 'user'], default: 'admin' },
@@ -15,6 +24,8 @@ const userSchema = new mongoose.Schema({
   resetPasswordToken: { type: String, default: '' },
   resetPasswordExpire: { type: Date },
   monthlyGoal: { type: Number, default: 100000 },
+  onboardingToken: { type: String, default: '' },
+  onboardingTokenExpires: { type: Date },
 }, { timestamps: true });
 
 userSchema.pre('save', async function() {

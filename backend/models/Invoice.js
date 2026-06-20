@@ -20,6 +20,14 @@ const invoiceSchema = new mongoose.Schema({
   dueDate: { type: Date },
   notes: { type: String, default: '' },
   paidAt: { type: Date },
+  // Recurring invoice fields
+  isRecurring: { type: Boolean, default: false },
+  recurringCycle: { type: String, enum: ['weekly', 'monthly', 'quarterly'], default: 'monthly' },
+  nextInvoiceDate: { type: Date },
+  // Razorpay payment tracking
+  razorpayOrderId: { type: String },
+  razorpayPaymentId: { type: String },
+  paymentLink: { type: String },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Invoice', invoiceSchema);

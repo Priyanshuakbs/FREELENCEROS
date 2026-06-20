@@ -1,40 +1,141 @@
-import { useState, useEffect } from 'react'
-import { Menu, User, Bell, Check, X } from 'lucide-react'
-import { useLocation } from 'react-router-dom'
-import { AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  Bell,
+  Check,
+  ChevronDown,
+  Clock3,
+  FileText,
+  FolderKanban,
+  LogOut,
+  Menu,
+  Moon,
+  Plus,
+  Search,
+  Sun,
+  User,
+  Users,
+  Wallet,
+  X,
+} from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
 import Sidebar from './Sidebar'
 import ChatbotWidget from './ChatbotWidget'
 import AnimatedPage from './AnimatedPage'
+import GlobalSearch from './GlobalSearch'
 import useAuthStore from '../store/authStore'
+import useThemeStore from '../store/themeStore'
+
+const breadcrumbMap = {
+  '/dashboard': 'Dashboard',
+  '/clients': 'Clients',
+  '/projects': 'Projects',
+  '/kanban': 'Kanban',
+  '/time-tracker': 'Time Tracker',
+  '/invoices': 'Invoices',
+  '/expenses': 'Analytics',
+  '/profile': 'Settings',
+  '/contracts': 'Contracts',
+  '/tax-estimator': 'Tax Estimator',
+  '/proposals': 'Proposals',
+}
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
-  const { user } = useAuthStore()
-  const location = useLocation()
-  const [resending, setResending] = useState(false)
-
   const [notifications, setNotifications] = useState([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [headerVisible, setHeaderVisible] = useState(true)
 
-  const fetchNotifications = async () => {
+  const { user, logout } = useAuthStore()
+  const { theme, toggleTheme, applyTheme } = useThemeStore()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const lastScrollY = useRef(0)
+
+  useEffect(() => {
+    applyTheme()
+  }, [theme, applyTheme])
+
+  useEffect(() => {
+    setNotificationsOpen(false)
+    setProfileOpen(false)
+    setQuickActionsOpen(false)
+    setSidebarOpen(false)
+  }, [location.pathname])
+
+  const currentPage = useMemo(() => breadcrumbMap[location.pathname] || 'Workspace', [location.pathname])
+
+  const fetchNotifications = useCallback(async () => {
     try {
       const { data } = await api.get('/projects/invitations/pending')
       setNotifications(data.invitations || [])
     } catch (err) {
-      console.error('Failed to load notifications:', err.message)
+      if (err.response) {
+        console.error('Failed to load notifications:', err.message)
+      }
     }
-  }
+  }, [])
 
   useEffect(() => {
-    if (user) {
-      fetchNotifications()
-      const interval = setInterval(fetchNotifications, 10000) // Poll every 10 seconds
-      return () => clearInterval(interval)
+    if (!user) return undefined
+
+    const refreshTimer = window.setTimeout(() => {
+      void fetchNotifications()
+    }, 0)
+    const interval = setInterval(fetchNotifications, 12000)
+    return () => {
+      clearTimeout(refreshTimer)
+      clearInterval(interval)
     }
-  }, [user])
+  }, [user, fetchNotifications])
+
+  const handleKeyDown = useCallback((event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault()
+      setSearchOpen((prev) => !prev)
+    }
+    if (event.key === 'Escape') {
+      setSearchOpen(false)
+      setNotificationsOpen(false)
+      setProfileOpen(false)
+      setQuickActionsOpen(false)
+      setSidebarOpen(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY
+
+      if (currentScrollY <= 24) {
+        setHeaderVisible(true)
+        lastScrollY.current = currentScrollY
+        return
+      }
+
+      const scrollingDown = currentScrollY > lastScrollY.current
+      const significantMove = Math.abs(currentScrollY - lastScrollY.current) > 10
+
+      if (significantMove) {
+        setHeaderVisible(!scrollingDown)
+        lastScrollY.current = currentScrollY
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   const handleAccept = async (token) => {
     try {
@@ -43,10 +144,7 @@ export default function Layout({ children }) {
       toast.success(data.message || 'Joined project successfully!', { id: 'accept-invite' })
       setNotificationsOpen(false)
       fetchNotifications()
-      // Refresh window to display newly joined projects
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
+      setTimeout(() => window.location.reload(), 1000)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not join project.', { id: 'accept-invite' })
     }
@@ -76,161 +174,282 @@ export default function Layout({ children }) {
     }
   }
 
+  const handleLogout = () => {
+    logout()
+    toast.success('Logged out successfully')
+    navigate('/login')
+  }
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex overflow-hidden">
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-all duration-300"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+    <div className="app-shell">
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
 
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block shrink-0">
-        <Sidebar
-          collapsed={collapsed}
-          setCollapsed={setCollapsed}
-        />
-      </div>
+      <div className="relative flex min-h-screen">
+        {sidebarOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 z-30 bg-slate-950/65 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close sidebar overlay"
+          />
+        )}
 
-      {/* Mobile Sidebar */}
-      <div
-        className={`fixed top-0 left-0 z-50 h-full lg:hidden transition-transform duration-300 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <Sidebar
-          mobile
-          collapsed={false}
-          setCollapsed={() => {}}
-          closeSidebar={() => setSidebarOpen(false)}
-        />
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-        {/* Top Navbar */}
-       <header className="h-16 shrink-0 border-b border-gray-800 bg-gray-900/60 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-30 shadow-md">
-          <div className="flex items-center gap-4">
-            <button
-              className="lg:hidden p-2 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-xl transition"
-              onClick={() => setSidebarOpen(true)}
+        <AnimatePresence>
+          {sidebarOpen && (
+            <motion.div
+              initial={{ x: -28, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -28, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 250, damping: 26 }}
+              className="fixed inset-y-0 left-0 z-40"
             >
-              <Menu size={20} />
-            </button>
+              <Sidebar mobile collapsed={false} setCollapsed={() => {}} closeSidebar={() => setSidebarOpen(false)} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            {!sidebarOpen && (
-              <h2 className="font-bold text-lg tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 lg:hidden">
-                FreelanceOS
-              </h2>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Notifications Bell */}
-            {user && (
-              <div className="relative">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header
+            className={`sticky top-0 z-20 px-4 pt-4 transition-transform duration-300 sm:px-6 lg:px-6 ${
+              headerVisible ? 'translate-y-0' : '-translate-y-[calc(100%+1rem)]'
+            }`}
+          >
+            <div className="header-bar">
+              <div className="flex min-w-0 items-center gap-3">
                 <button
-                  onClick={() => setNotificationsOpen(!notificationsOpen)}
-                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-xl transition relative"
-                  title="Notifications"
+                  onClick={() => setSidebarOpen(true)}
+                  className="btn-secondary px-3 py-2"
+                  aria-label="Open navigation"
+                  title="Open navigation"
                 >
-                  <Bell size={20} />
-                  {notifications.length > 0 && (
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-gray-900 animate-pulse" />
-                  )}
+                  <Menu size={18} />
                 </button>
 
-                {/* Notifications Dropdown */}
-                {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 w-80 bg-gray-900 border border-gray-850 rounded-2xl shadow-2xl py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="px-4 pb-2 border-b border-gray-800 flex justify-between items-center">
-                      <span className="font-bold text-sm text-white">Notifications</span>
-                      {notifications.length > 0 && (
-                        <span className="text-[10px] bg-indigo-600/30 text-indigo-400 font-semibold px-2 py-0.5 rounded-full">
-                          {notifications.length} pending
-                        </span>
-                      )}
-                    </div>
+                <div className="hidden min-w-0 items-center gap-2 text-sm text-slate-400 md:flex">
+                  <span className="text-slate-500">Workspace</span>
+                  <span className="text-slate-600">/</span>
+                  <span className="text-slate-100">{currentPage}</span>
+                </div>
+              </div>
 
-                    <div className="max-h-64 overflow-y-auto mt-2 px-2 space-y-1">
-                      {notifications.length === 0 ? (
-                        <div className="text-center py-6 text-gray-500 text-xs italic">
-                          No new notifications
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="header-search"
+              >
+                <Search size={16} style={{ color: 'var(--text-faint)' }} />
+                <span className="truncate" style={{ color: 'var(--text-faint)' }}>Search clients, projects, invoices, or tasks</span>
+                <span className="ml-auto rounded-lg px-2 py-1 text-[11px]" style={{ border: '1px solid var(--border-soft)', background: 'var(--bg-soft)', color: 'var(--text-faint)' }}>
+                  Ctrl K
+                </span>
+              </button>
+
+              <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                <button onClick={toggleTheme} className="btn-secondary px-3 py-2" title="Toggle theme">
+                  {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setQuickActionsOpen((prev) => !prev)
+                      setNotificationsOpen(false)
+                      setProfileOpen(false)
+                    }}
+                    className="btn-secondary hidden px-3 py-2 sm:inline-flex"
+                    title="Quick actions"
+                  >
+                    <Plus size={16} />
+                    <span className="hidden md:inline">Quick actions</span>
+                  </button>
+
+                  <AnimatePresence>
+                    {quickActionsOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 8 }}
+                        className="absolute right-0 mt-3 w-[260px] overflow-hidden dropdown-panel shadow-2xl"
+                      >
+                        <div className="px-4 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                          <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Quick actions</p>
+                          <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>Jump to common freelancer flows</p>
                         </div>
-                      ) : (
-                        notifications.map((n) => (
-                          <div key={n._id} className="p-3 hover:bg-gray-800/40 rounded-xl border border-transparent hover:border-gray-800/40 transition duration-150 flex flex-col gap-2">
-                            <p className="text-xs text-gray-300 leading-normal text-left">
-                              <strong className="text-white">{n.inviter?.name}</strong> invited you to collaborate on project <strong className="text-indigo-400">"{n.project?.title}"</strong>.
-                            </p>
-                            <div className="flex gap-2 justify-end mt-1">
-                              <button
-                                onClick={() => handleDecline(n.token)}
-                                className="px-2.5 py-1 bg-red-950/40 hover:bg-red-900/40 text-red-400 border border-red-900/30 rounded-lg text-[10px] font-semibold transition flex items-center gap-1"
-                              >
-                                <X size={10} /> Decline
-                              </button>
-                              <button
-                                onClick={() => handleAccept(n.token)}
-                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-semibold transition flex items-center gap-1 shadow-sm"
-                              >
-                                <Check size={10} /> Accept
-                              </button>
-                            </div>
+                        <div className="p-2">
+                          <QuickActionItem icon={Users} label="Add client" onClick={() => navigate('/clients')} />
+                          <QuickActionItem icon={FolderKanban} label="New project" onClick={() => navigate('/projects')} />
+                          <QuickActionItem icon={FileText} label="New invoice" onClick={() => navigate('/invoices')} />
+                          <QuickActionItem icon={Clock3} label="Open timer" onClick={() => navigate('/time-tracker')} />
+                          <QuickActionItem icon={Wallet} label="View analytics" onClick={() => navigate('/expenses')} />
+                          <QuickActionItem icon={User} label="Settings" onClick={() => navigate('/profile')} />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setNotificationsOpen((prev) => !prev)
+                      setProfileOpen(false)
+                      setQuickActionsOpen(false)
+                    }}
+                    className="btn-secondary relative px-3 py-2"
+                    title="Notifications"
+                  >
+                    <Bell size={16} />
+                    {notifications.length > 0 && (
+                      <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-400" />
+                    )}
+                  </button>
+
+                  <AnimatePresence>
+                    {notificationsOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 8 }}
+                        className="absolute right-0 mt-3 w-[360px] max-w-[calc(100vw-32px)] overflow-hidden dropdown-panel shadow-2xl"
+                      >
+                        <div className="flex items-center justify-between px-4 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                          <div>
+                            <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Notifications</p>
+                            <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>Project invites and updates</p>
                           </div>
-                        ))
+                          {notifications.length > 0 ? (
+                            <span className="rounded-full border border-indigo-400/20 bg-indigo-500/10 px-2.5 py-1 text-[11px] text-indigo-200">
+                              {notifications.length} pending
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="max-h-80 space-y-2 overflow-y-auto p-3">
+                          {notifications.length === 0 ? (
+                            <div className="rounded-2xl px-4 py-8 text-center text-sm" style={{ border: '1px dashed var(--border)', color: 'var(--text-subtle)' }}>
+                              No pending notifications
+                            </div>
+                          ) : (
+                            notifications.map((item) => (
+                              <div key={item._id} className="rounded-2xl p-4" style={{ border: '1px solid var(--border-soft)', background: 'var(--bg-soft)' }}>
+                                <p className="text-sm leading-6" style={{ color: 'var(--text-muted)' }}>
+                                  <span className="font-semibold" style={{ color: 'var(--text)' }}>{item.inviter?.name}</span>{' '}
+                                  invited you to join{' '}
+                                  <span className="font-semibold text-indigo-400">{item.project?.title}</span>.
+                                </p>
+                                <div className="mt-3 flex justify-end gap-2">
+                                  <button onClick={() => handleDecline(item.token)} className="btn-secondary px-3 py-2 text-xs">
+                                    <X size={14} /> Decline
+                                  </button>
+                                  <button onClick={() => handleAccept(item.token)} className="btn-primary px-3 py-2 text-xs">
+                                    <Check size={14} /> Accept
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {user && (
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setProfileOpen((prev) => !prev)
+                        setNotificationsOpen(false)
+                        setQuickActionsOpen(false)
+                      }}
+                      className="flex items-center gap-3 rounded-[20px] px-3 py-2 transition" style={{ border: '1px solid var(--border-soft)', background: 'var(--bg-soft)' }}
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-sm font-semibold text-white">
+                        {user.name?.slice(0, 1)?.toUpperCase() || 'U'}
+                      </div>
+                      <div className="hidden text-left sm:block">
+                        <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{user.name}</p>
+                        <p className="text-xs capitalize" style={{ color: 'var(--text-subtle)' }}>{user.role}</p>
+                      </div>
+                      <ChevronDown size={16} className="hidden text-slate-500 sm:block" />
+                    </button>
+
+                    <AnimatePresence>
+                      {profileOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 8 }}
+                          className="absolute right-0 mt-3 w-64 overflow-hidden dropdown-panel shadow-2xl"
+                        >
+                          <div className="px-4 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                            <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{user.name}</p>
+                            <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>{user.email}</p>
+                          </div>
+                          <div className="p-2">
+                            <button
+                              onClick={() => {
+                                setProfileOpen(false)
+                                navigate('/profile')
+                              }}
+                              className="dropdown-item"
+                            >
+                              <User size={16} /> Profile
+                            </button>
+                            <button
+                              onClick={handleLogout}
+                              className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm text-rose-400 transition hover:bg-rose-500/10"
+                            >
+                              <LogOut size={16} /> Log out
+                            </button>
+                          </div>
+                        </motion.div>
                       )}
-                    </div>
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
-            )}
-
-            {user && (
-              <div className="flex items-center gap-2.5 px-3 py-1.5 bg-gray-850/40 rounded-xl border border-gray-800 select-none">
-                <div className="w-5 h-5 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center">
-                  <User size={12} />
-                </div>
-                <span className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
-                  Logged in: <span className="text-white">{user.name}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 tracking-wider">
-                    {user.role}
-                  </span>
-                </span>
-              </div>
-            )}
-          </div>
-        </header>
-
-        {/* Scrollable container for dashboard contents */}
-        <main className="flex-1 overflow-y-auto">
-          {user && !user.isVerified && (
-            <div className="bg-amber-600/10 border-b border-amber-500/20 px-8 py-3 flex items-center justify-between gap-4 text-amber-200 text-xs font-semibold">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">⚠️</span>
-                <span>Your email address is unverified. Please check your inbox for the verification link.</span>
-              </div>
-              <button
-                onClick={handleResendVerification}
-                disabled={resending}
-                className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50 active:scale-95 text-amber-300 font-bold shrink-0"
-              >
-                {resending ? 'Sending...' : 'Resend Verification Link'}
-              </button>
             </div>
-          )}
-          <AnimatePresence mode="wait">
-            <AnimatedPage key={location.pathname}>
-              {children}
-            </AnimatedPage>
-          </AnimatePresence>
-        </main>
+          </header>
+
+          <main className="flex-1 pb-8">
+            {user && !user.isVerified && (
+              <div className="px-4 pt-4 sm:px-6 lg:px-8">
+                <div className="rounded-[24px] border border-amber-400/15 bg-amber-500/10 px-5 py-4 shadow-[0_18px_40px_-30px_rgba(245,158,11,0.7)] sm:flex sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-100">Your email is not verified yet.</p>
+                    <p className="text-sm text-amber-200/80">Verify your email to unlock full collaboration and invite flows.</p>
+                  </div>
+                  <button onClick={handleResendVerification} disabled={resending} className="btn-secondary mt-3 text-amber-100 sm:mt-0">
+                    {resending ? 'Sending...' : 'Resend verification'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <AnimatePresence mode="wait">
+              <AnimatedPage key={location.pathname}>
+                {children}
+              </AnimatedPage>
+            </AnimatePresence>
+          </main>
+        </div>
       </div>
 
-      {/* Chatbot Helper Widget */}
-      {user?.role === 'admin' && <ChatbotWidget />}
+      {user?.role === 'admin' ? <ChatbotWidget /> : null}
     </div>
+  )
+}
+
+function QuickActionItem({ icon: Icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="dropdown-item"
+    >
+      <span className="flex h-9 w-9 items-center justify-center rounded-2xl" style={{ background: 'var(--bg-soft)' }}>
+        <Icon size={16} />
+      </span>
+      <span>{label}</span>
+    </button>
   )
 }

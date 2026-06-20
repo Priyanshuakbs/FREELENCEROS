@@ -1,46 +1,81 @@
-import { useState, useEffect } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, CircleDashed, Plus, Sparkles, Trash2, CalendarDays, Flag, Tag, GripVertical } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
+import EmptyState from '../components/ui/EmptyState'
+import StatusBadge from '../components/ui/StatusBadge'
 
 const COLUMNS = ['todo', 'in-progress', 'review', 'done']
 
 const columnConfig = {
-  'todo': { label: 'To Do', icon: '📋', color: 'border-gray-600' },
-  'in-progress': { label: 'In Progress', icon: '⚡', color: 'border-blue-500' },
-  'review': { label: 'In Review', icon: '👀', color: 'border-yellow-500' },
-  'done': { label: 'Done', icon: '✅', color: 'border-green-500' },
+  todo: { label: 'To Do', tone: 'slate', ring: 'border-slate-400/20', accent: 'from-slate-400 to-slate-500' },
+  'in-progress': { label: 'In Progress', tone: 'indigo', ring: 'border-indigo-400/20', accent: 'from-indigo-400 to-violet-500' },
+  review: { label: 'In Review', tone: 'amber', ring: 'border-amber-400/20', accent: 'from-amber-400 to-orange-500' },
+  done: { label: 'Done', tone: 'emerald', ring: 'border-emerald-400/20', accent: 'from-emerald-400 to-cyan-400' },
 }
 
+const priorityTone = {
+  low: 'bg-slate-500/12 text-slate-300 border-slate-400/20',
+  medium: 'bg-cyan-500/12 text-cyan-300 border-cyan-400/20',
+  high: 'bg-rose-500/12 text-rose-300 border-rose-400/20',
+}
+
+const emptyBoard = { todo: [], 'in-progress': [], review: [], done: [] }
+
+const formatDue = (value) => value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'No due date'
+
 export default function Kanban() {
-  const [tasks, setTasks] = useState({ 'todo': [], 'in-progress': [], 'review': [], 'done': [] })
+  const [tasks, setTasks] = useState(emptyBoard)
   const [projects, setProjects] = useState([])
   const [selectedProject, setSelectedProject] = useState('')
   const [draggedTask, setDraggedTask] = useState(null)
   const [showAdd, setShowAdd] = useState(null)
-  const [newTask, setNewTask] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [newTask, setNewTask] = useState({
+    title: '',
+    priority: 'medium',
+    dueDate: '',
+    tags: '',
+  })
 
-  useEffect(() => { fetchProjects() }, [])
-  useEffect(() => { if (selectedProject) fetchTasks() }, [selectedProject])
+  useEffect(() => {
+    fetchProjects()
+  }, [])
+
+  useEffect(() => {
+    if (selectedProject) fetchTasks()
+  }, [selectedProject])
 
   const fetchProjects = async () => {
     try {
       const { data } = await api.get('/projects')
-      setProjects(data.projects)
-      if (data.projects.length > 0) setSelectedProject(data.projects[0]._id)
-    } catch {}
+      const nextProjects = data.projects || []
+      setProjects(nextProjects)
+      if (!selectedProject && nextProjects.length > 0) {
+        setSelectedProject(nextProjects[0]._id)
+      }
+      setLoading(false)
+    } catch {
+      toast.error('Failed to load projects')
+      setLoading(false)
+    }
   }
 
   const fetchTasks = async () => {
     try {
       const { data } = await api.get(`/projects/${selectedProject}`)
-      const grouped = { 'todo': [], 'in-progress': [], 'review': [], 'done': [] }
-      data.project.tasks.forEach(task => {
+      const grouped = { ...emptyBoard }
+      data.project.tasks.forEach((task) => {
         const col = task.status || 'todo'
         if (grouped[col]) grouped[col].push(task)
       })
       setTasks(grouped)
-    } catch {}
+    } catch {
+      toast.error('Failed to load board tasks')
+    }
   }
 
   const handleDragStart = (task, fromCol) => setDraggedTask({ task, fromCol })
@@ -49,163 +84,270 @@ export default function Kanban() {
     if (!draggedTask || draggedTask.fromCol === toCol) return
     try {
       await api.patch(`/projects/${selectedProject}/tasks/${draggedTask.task._id}/move`, { status: toCol })
-      fetchTasks()
-    } catch { toast.error('Failed to move task') }
-    setDraggedTask(null)
+      await fetchTasks()
+    } catch {
+      toast.error('Failed to move task')
+    } finally {
+      setDraggedTask(null)
+    }
   }
 
   const handleAddTask = async (col) => {
-    if (!newTask.trim()) return
+    if (!newTask.title.trim()) return
     try {
-      await api.post(`/projects/${selectedProject}/tasks`, { title: newTask, status: col })
-      setNewTask('')
+      await api.post(`/projects/${selectedProject}/tasks`, {
+        title: newTask.title,
+        status: col,
+        priority: newTask.priority,
+        dueDate: newTask.dueDate,
+        tags: newTask.tags,
+      })
+      setNewTask({ title: '', priority: 'medium', dueDate: '', tags: '' })
       setShowAdd(null)
       fetchTasks()
-      toast.success('Task added!')
-    } catch { toast.error('Failed to add task') }
+      toast.success('Task added')
+    } catch {
+      toast.error('Failed to add task')
+    }
   }
 
   const handleDeleteTask = async (taskId) => {
     try {
       await api.delete(`/projects/${selectedProject}/tasks/${taskId}`)
       fetchTasks()
-      toast.success('Deleted!')
-    } catch { toast.error('Failed to delete') }
+      toast.success('Task deleted')
+    } catch {
+      toast.error('Failed to delete task')
+    }
   }
 
-  return (
-    <div className="p-6 md:p-8 min-h-screen bg-[#0a0a0f] text-gray-200 relative overflow-hidden">
-      {/* Background ambient light */}
-      <div className="absolute top-10 right-10 w-80 h-80 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
+  const handleToggleTask = async (taskId) => {
+    try {
+      await api.patch(`/projects/${selectedProject}/tasks/${taskId}`)
+      fetchTasks()
+    } catch {
+      toast.error('Failed to update task')
+    }
+  }
 
-      <div className="max-w-7xl mx-auto space-y-8 relative z-10">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/[0.04] pb-6">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">Kanban Board</h1>
-            <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mt-1.5">
-              Drag and drop cards to update task sprint progress
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Project:</span>
+  const summary = useMemo(() => {
+    return COLUMNS.map((col) => ({ key: col, count: tasks[col]?.length || 0 }))
+  }, [tasks])
+
+  return (
+    <div className="page-container space-y-8">
+      <PageHeader
+        eyebrow="Task Management"
+        title="Kanban Board"
+        description="Drag cards between stages, tag work items, set priorities, and keep due dates visible at a glance."
+        actions={(
+          <div className="w-full sm:w-[280px]">
+            <label className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500 mb-2">Project</label>
             <select
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
-              className="bg-[#111118]/80 text-white text-xs font-semibold rounded-xl px-4 py-2.5 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all cursor-pointer"
+              className="input-shell w-full"
             >
-              {projects.map((p) => (
-                <option key={p._id} value={p._id}>{p.title}</option>
+              {projects.map((project) => (
+                <option key={project._id} value={project._id}>{project.title}</option>
               ))}
             </select>
           </div>
-        </div>
+        )}
+      />
 
-        {/* Column Summary Widgets */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {COLUMNS.map((col) => (
-            <div key={col} className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-4.5 backdrop-blur-md shadow-lg flex justify-between items-center">
-              <div>
-                <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">{columnConfig[col].label}</p>
-                <p className="text-2xl font-black text-white mt-1">{tasks[col]?.length || 0}</p>
-              </div>
-              <span className="text-2xl">{columnConfig[col].icon}</span>
-            </div>
-          ))}
-        </div>
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {summary.map((item) => (
+          <MetricColumn key={item.key} column={item.key} count={item.count} />
+        ))}
+      </div>
 
-        {/* Kanban Board Lanes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
-          {COLUMNS.map((col) => (
-            <div
-              key={col}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handleDrop(col)}
-              className={`bg-[#111118]/40 border-t-2 ${columnConfig[col].color} border-x border-b border-white/[0.04] rounded-2xl p-4 min-h-[550px] flex flex-col justify-between backdrop-blur-md shadow-2xl transition-all duration-300 hover:bg-[#111118]/50`}
-            >
-              <div className="flex-1 flex flex-col">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-xs text-white uppercase tracking-wider flex items-center gap-1.5">
-                    <span>{columnConfig[col].icon}</span>
-                    <span>{columnConfig[col].label}</span>
-                  </h3>
-                  <span className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    {tasks[col]?.length || 0}
-                  </span>
-                </div>
+      {!selectedProject && !loading ? (
+        <EmptyState
+          icon={CircleDashed}
+          title="No project selected"
+          description="Pick a project to see its task board."
+        />
+      ) : null}
 
-                {/* Cards List container */}
-                <div className="space-y-3 mb-4 max-h-[420px] overflow-y-auto pr-1">
-                  {tasks[col]?.map((task) => (
-                    <div
-                      key={task._id}
-                      draggable
-                      onDragStart={() => handleDragStart(task, col)}
-                      className="bg-[#0a0a0f]/90 rounded-xl p-4 cursor-grab active:cursor-grabbing border border-white/[0.03] hover:border-indigo-500/35 hover:shadow-lg transition-all duration-200 group flex items-start justify-between gap-3"
-                    >
-                      <p className="font-semibold text-gray-200 text-xs leading-normal">
-                        {task.title}
-                      </p>
-                      <button
-                        onClick={() => handleDeleteTask(task._id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-red-500/[0.04] border border-red-500/10 text-red-400 rounded-lg hover:bg-red-500/15 shrink-0"
-                        title="Delete task"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+      <div className="overflow-x-auto pb-2">
+        <div className="grid min-w-[1120px] gap-5 lg:grid-cols-4">
+          {COLUMNS.map((col) => {
+            const config = columnConfig[col]
+            return (
+              <div
+                key={col}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDrop(col)}
+                className="min-h-[680px]"
+              >
+                <SurfaceCard className={`h-full border-t-4 ${config.ring} bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(15,23,42,0.72))]`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${config.accent}`} />
+                        <h3 className="text-sm font-semibold text-slate-50">{config.label}</h3>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{tasks[col]?.length || 0} cards</p>
                     </div>
-                  ))}
-                  {tasks[col]?.length === 0 && (
-                    <div className="text-center py-12 text-gray-600 text-xs italic">
-                      Empty Lane
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Inline card creator */}
-              <div className="pt-2">
-                {showAdd === col ? (
-                  <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                    <input
-                      autoFocus
-                      type="text"
-                      value={newTask}
-                      onChange={(e) => setNewTask(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddTask(col)}
-                      placeholder="Task title..."
-                      className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-3 py-2 border border-indigo-500 focus:outline-none text-xs placeholder-gray-650"
-                    />
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => handleAddTask(col)} 
-                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-xs font-bold transition active:scale-95 shadow-md"
-                      >
-                        Add
-                      </button>
-                      <button 
-                        onClick={() => { setShowAdd(null); setNewTask('') }} 
-                        className="flex-1 bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.06] text-gray-400 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-slate-400">
+                      {config.label}
+                    </span>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => setShowAdd(col)}
-                    className="w-full border border-dashed border-white/[0.05] hover:border-indigo-500/40 hover:bg-indigo-500/[0.02] rounded-xl py-2.5 text-gray-500 hover:text-white transition-all duration-200 flex items-center justify-center gap-1.5 text-xs font-semibold"
-                  >
-                    <Plus size={14} /> Add Card
-                  </button>
-                )}
+
+                  <div className="mt-5 space-y-3">
+                    <AnimatePresence>
+                      {tasks[col]?.length > 0 ? tasks[col].map((task) => (
+                        <motion.div
+                          key={task._id}
+                          layout
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          draggable
+                          onDragStart={() => handleDragStart(task, col)}
+                          className="group rounded-[22px] border border-white/10 bg-white/[0.04] p-4 shadow-[0_18px_40px_-24px_rgba(2,6,23,0.8)] transition hover:border-white/15 hover:bg-white/[0.06]"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 cursor-grab text-slate-500 active:cursor-grabbing">
+                              <GripVertical size={16} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-3">
+                                <button
+                                  onClick={() => handleToggleTask(task._id)}
+                                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] transition ${task.completed ? 'border-emerald-400/20 bg-emerald-500/12 text-emerald-200' : 'border-white/10 bg-white/[0.03] text-slate-400'}`}
+                                >
+                                  {task.completed ? 'Done' : 'Open'}
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteTask(task._id)}
+                                  className="rounded-full border border-rose-400/15 bg-rose-500/10 p-2 text-rose-200 opacity-0 transition group-hover:opacity-100"
+                                  title="Delete task"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+
+                              <p className={`mt-3 text-sm leading-6 font-medium ${task.completed ? 'text-slate-400 line-through' : 'text-slate-100'}`}>
+                                {task.title}
+                              </p>
+
+                              <div className="mt-4 flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium capitalize ${priorityTone[task.priority] || priorityTone.medium}`}>
+                                  <Flag size={10} className="mr-1 inline-block" /> {task.priority || 'medium'}
+                                </span>
+                                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-slate-400">
+                                  <CalendarDays size={10} className="mr-1 inline-block" /> {formatDue(task.dueDate)}
+                                </span>
+                                {(task.tags || []).map((tag) => (
+                                  <span key={tag} className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-slate-300">
+                                    <Tag size={10} className="mr-1 inline-block" /> {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )) : (
+                        <div className="rounded-[22px] border border-dashed border-white/10 bg-white/[0.03] px-4 py-10 text-center">
+                          <p className="text-sm font-medium text-slate-200">No tasks here</p>
+                          <p className="mt-2 text-xs text-slate-500">Drop a task into this column or create a new one.</p>
+                        </div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <div className="mt-4">
+                    {showAdd === col ? (
+                      <div className="space-y-3 rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={newTask.title}
+                          onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddTask(col)}
+                          placeholder="Task title..."
+                          className="input-shell w-full"
+                        />
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <select
+                            value={newTask.priority}
+                            onChange={(e) => setNewTask((prev) => ({ ...prev, priority: e.target.value }))}
+                            className="input-shell w-full"
+                          >
+                            <option value="low">Low priority</option>
+                            <option value="medium">Medium priority</option>
+                            <option value="high">High priority</option>
+                          </select>
+                          <input
+                            type="date"
+                            value={newTask.dueDate}
+                            onChange={(e) => setNewTask((prev) => ({ ...prev, dueDate: e.target.value }))}
+                            className="input-shell w-full"
+                          />
+                          <input
+                            type="text"
+                            value={newTask.tags}
+                            onChange={(e) => setNewTask((prev) => ({ ...prev, tags: e.target.value }))}
+                            placeholder="tags"
+                            className="input-shell w-full"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleAddTask(col)}
+                            className="btn-primary flex-1 py-2.5"
+                          >
+                            Add Task
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowAdd(null)
+                              setNewTask({ title: '', priority: 'medium', dueDate: '', tags: '' })
+                            }}
+                            className="btn-secondary flex-1 py-2.5"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowAdd(col)}
+                        className="btn-secondary w-full justify-center border-dashed py-3"
+                      >
+                        <Plus size={16} /> Add task
+                      </button>
+                    )}
+                  </div>
+                </SurfaceCard>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
+  )
+}
+
+function MetricColumn({ column, count }) {
+  const icons = {
+    todo: CircleDashed,
+    'in-progress': Sparkles,
+    review: Flag,
+    done: Check,
+  }
+  const Icon = icons[column]
+  return (
+    <SurfaceCard className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">{columnConfig[column].label}</p>
+        <p className="mt-2 text-3xl font-semibold text-slate-50">{count}</p>
+      </div>
+      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${columnConfig[column].ring} bg-white/[0.03]`}>
+        <Icon size={18} className="text-slate-200" />
+      </div>
+    </SurfaceCard>
   )
 }

@@ -1,29 +1,36 @@
-import { useState, useEffect } from 'react'
-import { Plus, Trash2, CreditCard, Calendar, Tag, FileText, AlertCircle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertCircle, Calendar, CreditCard, Plus, Tag, Trash2 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
+import AnimatedPage from '../components/AnimatedPage'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
+import MetricCard from '../components/ui/MetricCard'
+import EmptyState from '../components/ui/EmptyState'
 
 const CATEGORIES = ['Software', 'Hardware', 'Marketing', 'Office', 'Travel', 'Others']
 
 const COLORS = {
-  Software: '#6366F1',   // indigo-500
-  Hardware: '#EC4899',   // pink-500
-  Marketing: '#3B82F6',  // blue-500
-  Office: '#10B981',     // emerald-500
-  Travel: '#F59E0B',     // amber-500
-  Others: '#6B7280',     // gray-500
+  Software: '#6366F1',
+  Hardware: '#EC4899',
+  Marketing: '#3B82F6',
+  Office: '#10B981',
+  Travel: '#F59E0B',
+  Others: '#6B7280',
+}
+
+const emptyForm = {
+  title: '',
+  amount: '',
+  category: 'Software',
+  date: new Date().toISOString().split('T')[0],
+  notes: '',
 }
 
 export default function Expenses() {
   const [expenses, setExpenses] = useState([])
-  const [formData, setFormData] = useState({
-    title: '',
-    amount: '',
-    category: 'Software',
-    date: new Date().toISOString().split('T')[0],
-    notes: '',
-  })
+  const [formData, setFormData] = useState(emptyForm)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -33,20 +40,16 @@ export default function Expenses() {
   const fetchExpenses = async () => {
     try {
       const { data } = await api.get('/expenses')
-      setExpenses(data.expenses)
+      setExpenses(data.expenses || [])
     } catch {
       toast.error('Failed to load expenses')
     }
   }
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async (event) => {
+    event.preventDefault()
     if (!formData.title.trim() || !formData.amount || Number(formData.amount) <= 0) {
-      toast.error('Please fill in a valid title and amount.')
+      toast.error('Please add a valid expense title and amount')
       return
     }
 
@@ -56,298 +59,231 @@ export default function Expenses() {
         ...formData,
         amount: Number(formData.amount),
       })
-      setExpenses([data.expense, ...expenses])
-      setFormData({
-        title: '',
-        amount: '',
-        category: 'Software',
-        date: new Date().toISOString().split('T')[0],
-        notes: '',
-      })
-      toast.success('Expense logged successfully!')
+      setExpenses((prev) => [data.expense, ...prev])
+      setFormData(emptyForm)
+      toast.success('Expense logged successfully')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to log expense')
+      toast.error(err.response?.data?.message || 'Failed to save expense')
     } finally {
       setLoading(false)
     }
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this expense?')) return
-
+    if (!window.confirm('Delete this expense entry?')) return
     try {
       await api.delete(`/expenses/${id}`)
-      setExpenses(expenses.filter((e) => e._id !== id))
-      toast.success('Expense deleted!')
+      setExpenses((prev) => prev.filter((item) => item._id !== id))
+      toast.success('Expense deleted')
     } catch {
       toast.error('Failed to delete expense')
     }
   }
 
-  // Calculate metrics
-  const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0)
-  
-  const thisMonthExpenses = expenses
-    .filter((e) => {
-      const expDate = new Date(e.date)
-      const now = new Date()
-      return expDate.getMonth() === now.getMonth() && expDate.getFullYear() === now.getFullYear()
-    })
-    .reduce((acc, e) => acc + e.amount, 0)
+  const metrics = useMemo(() => {
+    const total = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const now = new Date()
+    const monthly = expenses
+      .filter((item) => {
+        const date = new Date(item.date)
+        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
+      })
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0)
 
-  // Category breakdown calculations for charts
-  const categoryDataObj = expenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount
-    return acc
-  }, {})
+    const categoryTotals = expenses.reduce((acc, item) => {
+      acc[item.category] = (acc[item.category] || 0) + Number(item.amount || 0)
+      return acc
+    }, {})
 
-  const chartData = Object.keys(categoryDataObj).map((cat) => ({
-    name: cat,
-    value: categoryDataObj[cat],
-    color: COLORS[cat] || '#6B7280',
-  }))
+    const chartData = Object.entries(categoryTotals).map(([name, value]) => ({
+      name,
+      value,
+      color: COLORS[name] || COLORS.Others,
+    }))
 
-  const topCategory = chartData.sort((a, b) => b.value - a.value)[0]?.name || 'N/A'
+    return {
+      total,
+      monthly,
+      chartData,
+      topCategory: chartData.sort((a, b) => b.value - a.value)[0]?.name || 'N/A',
+    }
+  }, [expenses])
 
   return (
-    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto animate-fade-in text-gray-250 relative overflow-hidden">
-      {/* Glow ambient background lights */}
-      <div className="absolute top-10 right-10 w-80 h-80 bg-rose-500/5 rounded-full blur-[100px] pointer-events-none" />
+    <AnimatedPage className="page-container space-y-8">
+      <PageHeader
+        eyebrow="Business Spend"
+        title="Expenses"
+        description="Track software, travel, office, and operational costs with a clean ledger and category insights."
+      />
 
-      {/* Header */}
-      <div className="border-b border-white/[0.04] pb-6">
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          Expense <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-pink-300 to-rose-400">Tracker</span> 💳
-        </h1>
-        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mt-1.5">Track licenses, assets, travel logs, and operations payouts.</p>
+      <div className="grid gap-5 md:grid-cols-3">
+        <MetricCard label="Total expenses" value={`₹${Number(metrics.total).toLocaleString('en-IN')}`} icon={CreditCard} accent="rose" />
+        <MetricCard label="This month" value={`₹${Number(metrics.monthly).toLocaleString('en-IN')}`} icon={Calendar} accent="amber" />
+        <MetricCard label="Top category" value={metrics.topCategory} icon={Tag} accent="indigo" />
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur-md shadow-lg flex justify-between items-center">
-          <div className="space-y-1">
-            <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Total Expenses</span>
-            <p className="text-3xl font-black text-white tracking-tight mt-1">
-              ₹{Number(totalExpenses).toLocaleString('en-IN')}
-            </p>
+      <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <SurfaceCard className="space-y-5">
+          <div>
+            <p className="text-lg font-semibold text-slate-50">Log expense</p>
+            <p className="text-sm text-slate-400">Capture every spend with category, date, and note context.</p>
           </div>
-          <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl">
-            <CreditCard size={18} />
-          </div>
-        </div>
 
-        <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur-md shadow-lg flex justify-between items-center">
-          <div className="space-y-1">
-            <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Expenses This Month</span>
-            <p className="text-3xl font-black text-white tracking-tight mt-1">
-              ₹{Number(thisMonthExpenses).toLocaleString('en-IN')}
-            </p>
-          </div>
-          <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl">
-            <Calendar size={18} />
-          </div>
-        </div>
-
-        <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur-md shadow-lg flex justify-between items-center">
-          <div className="space-y-1">
-            <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Top Category</span>
-            <p className="text-3xl font-black text-white tracking-tight capitalize mt-1">
-              {topCategory}
-            </p>
-          </div>
-          <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl">
-            <Tag size={18} />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Log Form Panel */}
-        <div className="lg:col-span-1 bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur-md shadow-xl space-y-6">
-          <h2 className="text-sm font-bold text-white uppercase tracking-widest">Log Expense</h2>
-          
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Expense Title</label>
+              <label className="mb-2 block text-sm text-slate-300">Expense title</label>
               <input
                 type="text"
-                name="title"
                 value={formData.title}
-                onChange={handleChange}
-                placeholder="e.g. Photoshop Subscription"
-                className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs"
+                onChange={(event) => setFormData({ ...formData, title: event.target.value })}
+                className="input-shell w-full"
+                placeholder="Photoshop subscription"
                 required
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Amount (₹)</label>
+                <label className="mb-2 block text-sm text-slate-300">Amount</label>
                 <input
                   type="number"
-                  name="amount"
                   value={formData.amount}
-                  onChange={handleChange}
+                  onChange={(event) => setFormData({ ...formData, amount: event.target.value })}
+                  className="input-shell w-full"
                   placeholder="2499"
-                  className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs font-semibold"
                   required
                 />
               </div>
-
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Category</label>
+                <label className="mb-2 block text-sm text-slate-300">Category</label>
                 <select
-                  name="category"
                   value={formData.category}
-                  onChange={handleChange}
-                  className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all text-xs"
+                  onChange={(event) => setFormData({ ...formData, category: event.target.value })}
+                  className="input-shell w-full"
                 >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
+                  {CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Billing Date</label>
+              <label className="mb-2 block text-sm text-slate-300">Date</label>
               <input
                 type="date"
-                name="date"
                 value={formData.date}
-                onChange={handleChange}
-                className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all text-xs"
-                required
+                onChange={(event) => setFormData({ ...formData, date: event.target.value })}
+                className="input-shell w-full"
               />
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Expense Notes</label>
+              <label className="mb-2 block text-sm text-slate-300">Notes</label>
               <textarea
-                name="notes"
+                rows={3}
                 value={formData.notes}
-                onChange={handleChange}
-                rows="2"
-                placeholder="Details of expense (optional)..."
-                className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs resize-none"
+                onChange={(event) => setFormData({ ...formData, notes: event.target.value })}
+                className="input-shell w-full resize-none"
+                placeholder="Optional notes about this spend..."
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold py-3.5 rounded-xl shadow-lg hover:shadow-rose-500/10 transition duration-300 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer active:scale-95"
-            >
-              <Plus size={14} />
-              {loading ? 'Logging Expense...' : 'Log Expense'}
+            <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
+              <Plus size={16} /> {loading ? 'Saving...' : 'Log expense'}
             </button>
           </form>
-        </div>
+        </SurfaceCard>
 
-        {/* Expense logs and visualization charts */}
-        <div className="lg:col-span-2 space-y-6">
-          {chartData.length > 0 && (
-            <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur shadow-xl">
-              <h2 className="text-xs font-bold text-white uppercase tracking-widest mb-4">Category Breakdown</h2>
-              <div className="w-full h-48 flex justify-center items-center">
+        <div className="space-y-6">
+          <SurfaceCard className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-lg font-semibold text-slate-50">Category breakdown</p>
+                <p className="text-sm text-slate-400">Visual split of business spending.</p>
+              </div>
+            </div>
+
+            {metrics.chartData.length > 0 ? (
+              <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie
-                      data={chartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={70}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} stroke="#07070a" strokeWidth={2} />
+                    <Pie data={metrics.chartData} dataKey="value" innerRadius={55} outerRadius={92} paddingAngle={3}>
+                      {metrics.chartData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
                       ))}
                     </Pie>
                     <Tooltip
-                      contentStyle={{ backgroundColor: '#0d0d12', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px' }}
-                      labelStyle={{ color: '#fff', fontSize: '11px' }}
-                      formatter={(val) => [`₹${val.toLocaleString('en-IN')}`, 'Amount']}
+                      contentStyle={{ backgroundColor: 'var(--tooltip-bg)', border: '1px solid var(--tooltip-border)', borderRadius: '18px', color: 'var(--text)' }}
+                      formatter={(value) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Amount']}
                     />
-                    <Legend iconSize={8} iconType="circle" wrapperStyle={{ fontSize: '11px', color: '#9ca3af' }} />
+                    <Legend wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-          )}
-
-          {/* Logs panel grid table */}
-          <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur shadow-xl">
-            <h2 className="text-xs font-bold text-white uppercase tracking-widest mb-4">Expense Log Register</h2>
-            {expenses.length === 0 ? (
-              <div className="text-center py-16 text-gray-500 flex flex-col items-center justify-center gap-3">
-                <AlertCircle size={36} className="text-gray-600 animate-pulse" />
-                <p className="text-base font-bold text-white">No expenses recorded</p>
-                <p className="text-xs text-gray-500 max-w-xs leading-normal">File software keys, cloud servers, or other operational payouts on the left form.</p>
-              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-white/[0.04] text-gray-400 font-bold uppercase tracking-wider">
-                      <th className="pb-3 pt-1">Expense</th>
-                      <th className="pb-3 pt-1">Category</th>
-                      <th className="pb-3 pt-1">Date</th>
-                      <th className="pb-3 pt-1 text-right">Amount</th>
-                      <th className="pb-3 pt-1 text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/[0.03] text-gray-300">
-                    {expenses.map((e) => (
-                      <tr key={e._id} className="group hover:bg-white/[0.01] transition-all duration-200">
-                        <td className="py-3.5 pr-2">
-                          <p className="font-bold text-white truncate max-w-[160px]">{e.title}</p>
-                          {e.notes && <p className="text-[10px] text-gray-500 truncate max-w-[160px]">{e.notes}</p>}
-                        </td>
-                        <td className="py-3.5">
-                          <span
-                            className="text-[9px] px-2 py-0.5 rounded-md font-bold border"
-                            style={{
-                              borderColor: `${COLORS[e.category]}40`,
-                              backgroundColor: `${COLORS[e.category]}10`,
-                              color: COLORS[e.category],
-                            }}
-                          >
-                            {e.category}
-                          </span>
-                        </td>
-                        <td className="py-3.5">
-                          {new Date(e.date).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </td>
-                        <td className="py-3.5 text-right font-bold text-white">
-                          ₹{Number(e.amount).toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3.5 text-center">
-                          <button
-                            onClick={() => handleDelete(e._id)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/10"
-                            title="Delete log"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <EmptyState
+                icon={AlertCircle}
+                title="No expense data"
+                description="Add expenses to unlock category analytics and budget visibility."
+              />
+            )}
+          </SurfaceCard>
+
+          <SurfaceCard className="space-y-4">
+            <div>
+              <p className="text-lg font-semibold text-slate-50">Expense ledger</p>
+              <p className="text-sm text-slate-400">Recent spend entries with fast delete actions.</p>
+            </div>
+
+            {expenses.length === 0 ? (
+              <EmptyState
+                icon={AlertCircle}
+                title="No expenses recorded"
+                description="Your operating costs will show up here once you start logging them."
+              />
+            ) : (
+              <div className="space-y-3">
+                {expenses.map((expense) => (
+                  <div key={expense._id} className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-50">{expense.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {new Date(expense.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                        {expense.notes ? <p className="mt-2 text-sm leading-6 text-slate-400">{expense.notes}</p> : null}
+                      </div>
+                      <button
+                        onClick={() => handleDelete(expense._id)}
+                        className="rounded-2xl border border-rose-400/15 bg-rose-500/10 p-3 text-rose-200 transition hover:bg-rose-500/16"
+                        title="Delete expense"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span
+                        className="rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                        style={{
+                          borderColor: `${COLORS[expense.category] || COLORS.Others}30`,
+                          backgroundColor: `${COLORS[expense.category] || COLORS.Others}10`,
+                          color: COLORS[expense.category] || COLORS.Others,
+                        }}
+                      >
+                        {expense.category}
+                      </span>
+                      <p className="text-sm font-semibold text-slate-50">₹{Number(expense.amount || 0).toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-          </div>
+          </SurfaceCard>
         </div>
       </div>
-    </div>
+    </AnimatedPage>
   )
 }

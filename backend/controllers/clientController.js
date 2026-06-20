@@ -3,8 +3,29 @@ const User = require('../models/User');
 
 exports.getClients = async (req, res) => {
   try {
-    const clients = await Client.find({ freelancer: req.user._id }).populate('user');
-    res.json({ clients });
+    const clients = await Client.find({ freelancer: req.user._id })
+      .populate('user')
+      .populate('payments.recordedBy', 'name avatar');
+
+    const normalizedClients = clients.map((client) => {
+      const amountPaid = Number(client.payments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || client.amountPaid || 0);
+      const totalProjectAmount = Number(client.totalProjectAmount || 0);
+      const remainingAmount = Math.max(0, totalProjectAmount - amountPaid);
+      const paymentStatus = remainingAmount === 0 && totalProjectAmount > 0
+        ? 'paid'
+        : amountPaid > 0
+          ? 'partial'
+          : 'pending';
+
+      return {
+        ...client.toObject(),
+        amountPaid,
+        remainingAmount,
+        paymentStatus,
+      };
+    });
+
+    res.json({ clients: normalizedClients });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -12,7 +33,7 @@ exports.getClients = async (req, res) => {
 
 exports.createClient = async (req, res) => {
   try {
-    const { name, email, phone, company, address, allowLogin, password } = req.body;
+    const { name, email, phone, company, address, allowLogin, password, notes, tags, totalProjectAmount } = req.body;
     if (!name || !email)
       return res.status(400).json({ message: 'Name and email required' });
 
@@ -40,6 +61,12 @@ exports.createClient = async (req, res) => {
 
     const client = await Client.create({
       name, email, phone, company, address,
+      notes: notes || '',
+      tags: Array.isArray(tags) ? tags : (typeof tags === 'string' && tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : []),
+      totalProjectAmount: Number(totalProjectAmount) || 0,
+      amountPaid: 0,
+      remainingAmount: Number(totalProjectAmount) || 0,
+      paymentStatus: Number(totalProjectAmount) > 0 ? 'pending' : 'pending',
       freelancer: req.user._id,
       user: userId
     });
@@ -53,7 +80,7 @@ exports.createClient = async (req, res) => {
 
 exports.updateClient = async (req, res) => {
   try {
-    const { name, email, phone, company, address, allowLogin, password } = req.body;
+    const { name, email, phone, company, address, allowLogin, password, notes, tags, totalProjectAmount } = req.body;
 
     let client = await Client.findOne({ _id: req.params.id, freelancer: req.user._id });
     if (!client) return res.status(404).json({ message: 'Client not found' });
@@ -106,6 +133,17 @@ exports.updateClient = async (req, res) => {
     client.phone = phone;
     client.company = company;
     client.address = address;
+    client.notes = notes || '';
+    client.tags = Array.isArray(tags) ? tags : (typeof tags === 'string' && tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : client.tags || []);
+    if (totalProjectAmount !== undefined && totalProjectAmount !== '') {
+      client.totalProjectAmount = Number(totalProjectAmount) || 0;
+    }
+    client.remainingAmount = Math.max(0, Number(client.totalProjectAmount || 0) - Number(client.amountPaid || 0));
+    client.paymentStatus = client.remainingAmount === 0 && client.totalProjectAmount > 0
+      ? 'paid'
+      : client.amountPaid > 0
+        ? 'partial'
+        : 'pending';
     client.user = userId;
 
     await client.save();
@@ -128,6 +166,45 @@ exports.deleteClient = async (req, res) => {
 
     await Client.findByIdAndDelete(req.params.id);
     res.json({ message: 'Client deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.addPaymentRecord = async (req, res) => {
+  try {
+    const client = await Client.findOne({ _id: req.params.id, freelancer: req.user._id });
+    if (!client) return res.status(404).json({ message: 'Client not found' });
+
+    const amount = Number(req.body.amount);
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Valid payment amount required' });
+    }
+
+    client.payments.unshift({
+      amount,
+      date: req.body.date || new Date(),
+      note: req.body.note || '',
+      invoiceNumber: req.body.invoiceNumber || '',
+      screenshot: req.file ? `/uploads/${req.file.filename}` : '',
+      recordedBy: req.user._id,
+    });
+
+    client.amountPaid = Number(client.amountPaid || 0) + amount;
+    client.remainingAmount = Math.max(0, Number(client.totalProjectAmount || 0) - client.amountPaid);
+    client.paymentStatus = client.remainingAmount === 0 && client.totalProjectAmount > 0
+      ? 'paid'
+      : client.amountPaid > 0
+        ? 'partial'
+        : 'pending';
+
+    await client.save();
+
+    const populatedClient = await Client.findById(client._id)
+      .populate('user')
+      .populate('payments.recordedBy', 'name avatar');
+
+    res.status(201).json({ client: populatedClient });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

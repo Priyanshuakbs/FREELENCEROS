@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Mail, ArrowLeft, Loader2, CheckCircle } from 'lucide-react'
+import { Mail, ArrowLeft, Loader2, CheckCircle, BadgeIndianRupee } from 'lucide-react'
 import api from '../lib/axios'
 import AnimatedPage from '../components/AnimatedPage'
 import toast from 'react-hot-toast'
@@ -27,11 +27,18 @@ export default function ForgotPassword() {
   }
 
   return (
-    <AnimatedPage className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-center mb-6">
-          <span className="text-3xl">💼</span>
-          <span className="ml-2 font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
+    <AnimatedPage className="auth-page">
+      {/* Ambient blobs */}
+      <div className="pointer-events-none absolute top-1/4 left-1/4 h-80 w-80 rounded-full bg-indigo-500/10 blur-[100px]" />
+      <div className="pointer-events-none absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-purple-500/10 blur-[100px]" />
+
+      <div className="auth-card relative z-10">
+        {/* Logo */}
+        <div className="mb-6 flex items-center justify-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 shadow-lg">
+            <BadgeIndianRupee size={18} className="text-white" />
+          </div>
+          <span className="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-xl font-bold text-transparent">
             FreelanceOS
           </span>
         </div>
@@ -39,19 +46,17 @@ export default function ForgotPassword() {
         {!submitted ? (
           <div className="space-y-6">
             <div>
-              <h1 className="text-2xl font-bold text-white">Forgot Password? 🔒</h1>
-              <p className="text-gray-400 text-sm mt-1.5">
+              <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Forgot Password? 🔒</h1>
+              <p className="mt-1.5 text-sm" style={{ color: 'var(--text-subtle)' }}>
                 No worries! Enter your registered email address and we'll send you a link to reset your password.
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-gray-300 text-xs font-semibold uppercase tracking-wider mb-2 block">
-                  Email Address
-                </label>
+                <label className="form-label">Email Address</label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5" style={{ color: 'var(--text-faint)' }}>
                     <Mail size={16} />
                   </span>
                   <input
@@ -59,7 +64,7 @@ export default function ForgotPassword() {
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-gray-950 text-white rounded-xl pl-10 pr-4 py-3 border border-gray-800 focus:border-indigo-500 focus:outline-none transition-all text-sm"
+                    className="input-shell w-full pl-10"
                     required
                   />
                 </div>
@@ -68,13 +73,10 @@ export default function ForgotPassword() {
               <button
                 type="submit"
                 disabled={loading || !email}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold py-3 rounded-xl shadow-lg hover:shadow-indigo-500/20 transition duration-300 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                className="btn-primary w-full justify-center disabled:opacity-50"
               >
                 {loading ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Sending Link...
-                  </>
+                  <><Loader2 size={16} className="animate-spin" /> Sending Link...</>
                 ) : (
                   'Send Reset Link'
                 )}
@@ -83,28 +85,30 @@ export default function ForgotPassword() {
 
             <Link
               to="/login"
-              className="flex items-center justify-center gap-2 text-gray-400 hover:text-white transition-all text-sm font-medium pt-2"
+              className="flex items-center justify-center gap-2 pt-2 text-sm font-medium transition"
+              style={{ color: 'var(--text-subtle)' }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-subtle)' }}
             >
               <ArrowLeft size={16} /> Back to Sign In
             </Link>
           </div>
         ) : (
-          <div className="space-y-6 text-center py-4">
-            <CheckCircle className="mx-auto text-emerald-500" size={56} />
+          <div className="space-y-6 py-4 text-center">
+            <CheckCircle className="mx-auto text-emerald-400" size={56} />
             <div className="space-y-2">
-              <h2 className="text-xl font-bold text-white">Check Your Inbox!</h2>
-              <p className="text-gray-400 text-sm px-2">
-                We have sent a password reset link to <strong className="text-gray-200">{email}</strong>. Please check your inbox and click the link to set your new password.
+              <h2 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Check Your Inbox!</h2>
+              <p className="px-2 text-sm" style={{ color: 'var(--text-subtle)' }}>
+                We have sent a password reset link to{' '}
+                <strong style={{ color: 'var(--text-muted)' }}>{email}</strong>. Please check your inbox and click the link.
               </p>
             </div>
-            <div className="space-y-3 pt-2">
-              <Link
-                to="/login"
-                className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white font-semibold py-3 rounded-xl transition duration-305 block text-center text-sm"
-              >
-                Back to Sign In
-              </Link>
-            </div>
+            <Link
+              to="/login"
+              className="btn-secondary block w-full text-center"
+            >
+              Back to Sign In
+            </Link>
           </div>
         )}
       </div>

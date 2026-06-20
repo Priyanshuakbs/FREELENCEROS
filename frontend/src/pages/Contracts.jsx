@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, FileText, Download, Briefcase, User, Mail, ShieldAlert, Sparkles } from 'lucide-react'
+import { Plus, Trash2, FileText, Download, Briefcase, User, Mail, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
 import AnimatedPage from '../components/AnimatedPage'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 const TEMPLATES = [
   {
@@ -135,14 +137,14 @@ export default function Contracts() {
       const res = await api.get(`/contracts/${id}/pdf`, { responseType: 'blob' })
       const file = new Blob([res.data], { type: 'application/pdf' })
       const fileURL = URL.createObjectURL(file)
-      
+
       const link = document.createElement('a')
       link.href = fileURL
       link.setAttribute('download', `${title.replace(/\s+/g, '_')}_contract.pdf`)
       document.body.appendChild(link)
       link.click()
       link.remove()
-      
+
       toast.success('Downloaded!', { id: 'pdf-toast' })
     } catch {
       toast.error('Failed to generate PDF', { id: 'pdf-toast' })
@@ -150,115 +152,122 @@ export default function Contracts() {
   }
 
   return (
-    <AnimatedPage className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto relative overflow-hidden text-gray-250">
-      {/* Glow ambient background lights */}
-      <div className="absolute top-10 right-10 w-96 h-96 bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-10 left-10 w-80 h-80 bg-purple-500/5 rounded-full blur-[100px] pointer-events-none" />
+    <AnimatedPage className="page-container space-y-8 relative">
+      {/* Ambient glow – decorative only */}
+      <div className="pointer-events-none absolute top-10 right-10 h-80 w-96 rounded-full bg-indigo-500/5 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-10 left-10 h-72 w-80 rounded-full bg-purple-500/5 blur-[100px]" />
 
-      {/* Header */}
-      <div className="border-b border-white/[0.04] pb-6">
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          Contracts & <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">Proposals</span> 📜
-        </h1>
-        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mt-1.5">Draft, print, and manage agreements with professional terms templates.</p>
-      </div>
+      <PageHeader
+        eyebrow="Legal & Agreements"
+        title={<>Contracts & <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Proposals</span> 📜</>}
+        description="Draft, print, and manage agreements with professional terms templates and AI-generated clauses."
+      />
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Form and Template selectors (Left 5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur-md shadow-xl space-y-6">
-            <h2 className="text-sm font-bold text-white uppercase tracking-widest">Create Agreement</h2>
-            
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        {/* ── Form panel ── */}
+        <div className="space-y-6 lg:col-span-5">
+          <SurfaceCard className="space-y-6">
+            <p className="text-sm font-bold uppercase tracking-widest" style={{ color: 'var(--text)' }}>Create Agreement</p>
+
             {/* Template Buttons */}
             <div className="space-y-3">
-              <label className="block text-[10px] font-bold text-gray-450 uppercase tracking-wider">Quick Templates</label>
+              <label className="form-label">Quick Templates</label>
               <div className="flex flex-col gap-2">
                 {TEMPLATES.map((temp) => (
                   <button
                     key={temp.name}
                     type="button"
                     onClick={() => loadTemplate(temp.terms)}
-                    className="group w-full text-left bg-[#0a0a0f]/80 hover:bg-white/[0.02] border border-white/[0.04] hover:border-indigo-500/30 text-gray-300 text-xs px-3.5 py-3 rounded-xl transition duration-200 cursor-pointer active:scale-[0.98] font-medium flex items-center justify-between"
+                    className="group flex w-full cursor-pointer items-center justify-between rounded-xl px-3.5 py-3 text-left text-xs font-medium transition active:scale-[0.98]"
+                    style={{ background: 'var(--bg-soft)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.35)' }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-soft)' }}
                   >
                     <span>{temp.name}</span>
-                    <span className="text-[10px] text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity">Load →</span>
+                    <span className="text-[10px] text-indigo-400 opacity-0 transition-opacity group-hover:opacity-100">Load →</span>
                   </button>
                 ))}
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Contract Title */}
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Contract Title</label>
+                <label className="form-label">Contract Title</label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500"><Briefcase size={14} /></span>
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5" style={{ color: 'var(--text-faint)' }}>
+                    <Briefcase size={14} />
+                  </span>
                   <input
                     type="text"
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
                     placeholder="e.g. Portfolio Website Redesign"
-                    className="w-full bg-[#0a0a0f]/80 text-white rounded-xl pl-10 pr-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs"
+                    className="input-shell w-full pl-10"
                     required
                   />
                 </div>
               </div>
 
+              {/* Client Name + Email */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Client Name</label>
+                  <label className="form-label">Client Name</label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500"><User size={14} /></span>
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5" style={{ color: 'var(--text-faint)' }}>
+                      <User size={14} />
+                    </span>
                     <input
                       type="text"
                       name="clientName"
                       value={formData.clientName}
                       onChange={handleChange}
                       placeholder="John Doe"
-                      className="w-full bg-[#0a0a0f]/80 text-white rounded-xl pl-10 pr-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs"
+                      className="input-shell w-full pl-10"
                       required
                     />
                   </div>
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Client Email</label>
+                  <label className="form-label">Client Email</label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500"><Mail size={14} /></span>
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5" style={{ color: 'var(--text-faint)' }}>
+                      <Mail size={14} />
+                    </span>
                     <input
                       type="email"
                       name="clientEmail"
                       value={formData.clientEmail}
                       onChange={handleChange}
                       placeholder="client@mail.com"
-                      className="w-full bg-[#0a0a0f]/80 text-white rounded-xl pl-10 pr-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs"
+                      className="input-shell w-full pl-10"
                       required
                     />
                   </div>
                 </div>
               </div>
 
+              {/* Budget + Status */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Budget (₹)</label>
+                  <label className="form-label">Budget (₹)</label>
                   <input
                     type="number"
                     name="amount"
                     value={formData.amount}
                     onChange={handleChange}
                     placeholder="45000"
-                    className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs font-semibold"
+                    className="input-shell w-full"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Status</label>
+                  <label className="form-label">Status</label>
                   <select
                     name="status"
                     value={formData.status}
                     onChange={handleChange}
-                    className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all text-xs"
+                    className="input-shell w-full"
                   >
                     <option value="draft">Draft</option>
                     <option value="sent">Sent</option>
@@ -267,35 +276,37 @@ export default function Contracts() {
                 </div>
               </div>
 
+              {/* Description */}
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Project Outline</label>
+                <label className="form-label">Project Outline</label>
                 <textarea
                   name="description"
                   value={formData.description}
                   onChange={handleChange}
                   rows="2"
                   placeholder="Summary of deliverables..."
-                  className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs resize-none"
+                  className="input-shell w-full resize-none"
                 />
               </div>
 
+              {/* Terms */}
               <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-[10px] font-bold text-gray-450 uppercase tracking-wider">Scope & Terms</label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="form-label mb-0">Scope & Terms</label>
                   <button
                     type="button"
                     onClick={handleGenerateAITerms}
                     disabled={aiGenerating}
-                    className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1.5 rounded-lg border border-indigo-500/20 disabled:opacity-50 cursor-pointer active:scale-95"
+                    className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-1.5 text-[10px] font-bold text-indigo-400 transition hover:bg-indigo-500/20 active:scale-95 disabled:opacity-50"
                   >
                     {aiGenerating ? (
                       <>
-                        <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
                         <span>Generating Clauses...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles size={11} className="text-indigo-400 animate-pulse" />
+                        <Sparkles size={11} className="animate-pulse text-indigo-400" />
                         <span>Generate with AI</span>
                       </>
                     )}
@@ -307,7 +318,7 @@ export default function Contracts() {
                   onChange={handleChange}
                   rows="5"
                   placeholder="Terms, revisions policies, and milestones agreements..."
-                  className="w-full bg-[#0a0a0f]/80 text-white rounded-xl px-4 py-3 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all placeholder-gray-600 text-xs font-mono resize-none leading-relaxed"
+                  className="input-shell w-full resize-none font-mono leading-relaxed"
                   required
                 />
               </div>
@@ -315,48 +326,57 @@ export default function Contracts() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-indigo-655 to-purple-655 bg-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3.5 rounded-xl shadow-lg hover:shadow-indigo-500/10 transition duration-300 flex items-center justify-center gap-2 text-xs disabled:opacity-50 cursor-pointer active:scale-95 mt-2"
+                className="btn-primary mt-2 w-full justify-center disabled:opacity-50"
               >
                 <Plus size={14} />
                 {loading ? 'Saving Contract...' : 'Save Contract'}
               </button>
             </form>
-          </div>
+          </SurfaceCard>
         </div>
 
-        {/* Existing Contracts List (Right 7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          <div className="bg-[#111118]/60 border border-white/[0.04] rounded-2xl p-6 backdrop-blur shadow-xl">
-            <h2 className="text-xs font-bold text-white uppercase tracking-widest mb-4">Contracts Register</h2>
+        {/* ── Contracts list ── */}
+        <div className="space-y-6 lg:col-span-7">
+          <SurfaceCard>
+            <p className="mb-4 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text)' }}>Contracts Register</p>
+
             {contracts.length === 0 ? (
-              <div className="text-center py-20 text-gray-500 flex flex-col items-center justify-center gap-3">
-                <FileText size={36} className="text-gray-600 animate-pulse" />
-                <p className="text-sm font-bold text-white">No contracts created yet</p>
-                <p className="text-xs text-gray-500 max-w-xs leading-normal">Set up your terms on the left to start generating professional agreements.</p>
+              <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+                <FileText size={36} className="animate-pulse text-indigo-400/50" />
+                <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>No contracts created yet</p>
+                <p className="max-w-xs text-xs leading-normal" style={{ color: 'var(--text-subtle)' }}>
+                  Set up your terms on the left to start generating professional agreements.
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
                 {contracts.map((con) => (
                   <div
                     key={con._id}
-                    className="group p-5 bg-[#111118]/60 border border-white/[0.04] hover:border-indigo-500/30 rounded-2xl transition duration-300 flex items-center justify-between gap-4 backdrop-blur shadow-md"
+                    className="group flex items-center justify-between gap-4 rounded-2xl p-5 transition duration-300"
+                    style={{ background: 'var(--bg-soft)', border: '1px solid var(--border-soft)' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.3)' }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-soft)' }}
                   >
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-white truncate text-sm leading-snug group-hover:text-indigo-300 transition-colors">{con.title}</h3>
-                      <p className="text-xs text-gray-500 mt-1 truncate">
-                        Client: <strong className="text-gray-300 font-semibold">{con.clientName}</strong> <span className="text-gray-600">({con.clientEmail})</span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-sm font-bold leading-snug transition-colors group-hover:text-indigo-400" style={{ color: 'var(--text)' }}>
+                        {con.title}
+                      </h3>
+                      <p className="mt-1 truncate text-xs" style={{ color: 'var(--text-subtle)' }}>
+                        Client: <strong style={{ color: 'var(--text-muted)' }}>{con.clientName}</strong>{' '}
+                        <span style={{ color: 'var(--text-faint)' }}>({con.clientEmail})</span>
                       </p>
-                      <div className="flex items-center gap-3 mt-3">
-                        <span className="text-[10px] font-extrabold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-md">
+                      <div className="mt-3 flex items-center gap-3">
+                        <span className="rounded-md border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-extrabold text-indigo-400">
                           ₹{Number(con.amount).toLocaleString('en-IN')}
                         </span>
                         <span
-                          className={`text-[9px] uppercase font-black px-2 py-0.5 rounded-md border ${
+                          className={`rounded-md border px-2 py-0.5 text-[9px] font-black uppercase ${
                             con.status === 'signed'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
                               : con.status === 'sent'
-                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                              : 'bg-gray-500/10 text-gray-400 border-white/[0.04]'
+                              ? 'border-blue-500/20 bg-blue-500/10 text-blue-400'
+                              : 'border-slate-500/20 bg-slate-500/10 text-slate-400'
                           }`}
                         >
                           {con.status}
@@ -367,14 +387,15 @@ export default function Contracts() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleDownload(con._id, con.title)}
-                        className="text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 hover:bg-indigo-500/25 p-2.5 rounded-xl transition cursor-pointer active:scale-95"
+                        className="cursor-pointer rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-2.5 text-indigo-400 transition hover:bg-indigo-500/25 hover:text-indigo-300 active:scale-95"
                         title="Download PDF"
                       >
                         <Download size={14} />
                       </button>
                       <button
                         onClick={() => handleDelete(con._id)}
-                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 p-2.5 rounded-xl hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/10 cursor-pointer active:scale-95"
+                        className="cursor-pointer rounded-xl border border-transparent p-2.5 opacity-0 transition-all hover:border-rose-500/20 hover:bg-rose-500/10 hover:text-rose-400 active:scale-95 group-hover:opacity-100"
+                        style={{ color: 'var(--text-subtle)' }}
                         title="Delete"
                       >
                         <Trash2 size={14} />
@@ -384,7 +405,7 @@ export default function Contracts() {
                 ))}
               </div>
             )}
-          </div>
+          </SurfaceCard>
         </div>
       </div>
     </AnimatedPage>

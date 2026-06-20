@@ -180,3 +180,118 @@ Return ONLY the numbered clauses, do NOT include extra markdown formatting, intr
     res.status(500).json({ message: err.message });
   }
 };
+
+// AI Proposal Writer
+exports.generateProposal = async (req, res) => {
+  try {
+    const { clientName, projectType, description, budget, timeline, tone, myName } = req.body;
+    if (!clientName || !description) {
+      return res.status(400).json({ message: 'Client name and description required' });
+    }
+
+    const prompt = `You are an expert freelance proposal writer. Write a professional, compelling project proposal.
+
+Freelancer/Agency: ${myName || 'FreelanceOS User'}
+Client Name: ${clientName}
+Project Type: ${projectType || 'Web Development'}
+Project Description: ${description}
+Budget: ${budget ? '₹' + budget : 'To be discussed'}
+Timeline: ${timeline || 'To be discussed'}
+Tone: ${tone || 'Professional'}
+
+Write a complete project proposal with these sections:
+1. Executive Summary
+2. Understanding of Requirements
+3. Proposed Solution & Approach
+4. Deliverables
+5. Timeline & Milestones
+6. Investment (Budget Breakdown)
+7. Why Choose Us
+8. Next Steps
+
+Make it persuasive, specific to the project description, and ${tone || 'professional'} in tone.
+Do NOT use markdown formatting like ** or ##. Use plain text with numbered sections.
+Return ONLY the proposal text, nothing else.`;
+
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (geminiKey) {
+      const { GoogleGenerativeAI } = require('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const result = await model.generateContent(prompt);
+      return res.json({ proposal: result.response.text().trim() });
+    }
+
+    return res.status(400).json({ message: 'No GEMINI_API_KEY configured in backend .env' });
+  } catch (err) {
+    console.error('AI proposal error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Razorpay: Create payment order
+exports.createPaymentOrder = async (req, res) => {
+  try {
+    const Razorpay = require('razorpay');
+    const Invoice = require('../models/Invoice');
+
+    const invoice = await Invoice.findOne({ _id: req.params.id })
+      .populate('client', 'name email');
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    const rzp = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+
+    const order = await rzp.orders.create({
+      amount: Math.round(invoice.total * 100), // paise
+      currency: 'INR',
+      receipt: invoice.invoiceNumber,
+      notes: { invoiceId: invoice._id.toString(), clientName: invoice.client?.name },
+    });
+
+    invoice.razorpayOrderId = order.id;
+    await invoice.save();
+
+    res.json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      invoiceNumber: invoice.invoiceNumber,
+      clientName: invoice.client?.name,
+    });
+  } catch (err) {
+    console.error('Razorpay order error:', err.message);
+    res.status(500).json({ message: 'Payment gateway error: ' + err.message });
+  }
+};
+
+// Razorpay: Verify payment and mark invoice paid
+exports.verifyPayment = async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const Invoice = require('../models/Invoice');
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, invoiceId } = req.body;
+
+    const body = razorpay_order_id + '|' + razorpay_payment_id;
+    const expected = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(body).digest('hex');
+
+    if (expected !== razorpay_signature) {
+      return res.status(400).json({ message: 'Payment verification failed' });
+    }
+
+    const invoice = await Invoice.findByIdAndUpdate(invoiceId, {
+      status: 'paid',
+      paidAt: new Date(),
+      razorpayPaymentId: razorpay_payment_id,
+    }, { new: true });
+
+    res.json({ success: true, invoice });
+  } catch (err) {
+    console.error('Razorpay verify error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};

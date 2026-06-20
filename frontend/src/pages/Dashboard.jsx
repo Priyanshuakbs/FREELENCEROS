@@ -1,39 +1,81 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, FolderOpen, Clock, DollarSign, Wallet, ArrowUpRight, TrendingUp, Edit2, Check, X, Sparkles } from 'lucide-react'
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { motion } from 'framer-motion'
-import AnimatedPage from '../components/AnimatedPage'
-import useAuthStore from '../store/authStore'
-import api from '../lib/axios'
+import {
+  AlertCircle,
+  ArrowUpRight,
+  BriefcaseBusiness,
+  Clock3,
+  DollarSign,
+  FolderKanban,
+  Receipt,
+  Wallet,
+  TrendingUp,
+  Users,
+} from 'lucide-react'
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import toast from 'react-hot-toast'
+import api from '../lib/axios'
+import useAuthStore from '../store/authStore'
+import PageHeader from '../components/ui/PageHeader'
+import MetricCard from '../components/ui/MetricCard'
+import SurfaceCard from '../components/ui/SurfaceCard'
+import EmptyState from '../components/ui/EmptyState'
+import StatusBadge from '../components/ui/StatusBadge'
+
+const STATUS_COLORS = {
+  active: '#6366f1',
+  completed: '#06b6d4',
+  'on-hold': '#f59e0b',
+  cancelled: '#f43f5e',
+}
+
+const STATUS_LABELS = {
+  active: 'Active',
+  completed: 'Completed',
+  'on-hold': 'On hold',
+  cancelled: 'Cancelled',
+}
 
 export default function Dashboard() {
-  const { user, token, setAuth } = useAuthStore()
+  const { user } = useAuthStore()
   const navigate = useNavigate()
-  
-  const [stats, setStats] = useState({
+
+  const [overview, setOverview] = useState({
     clients: 0,
     projects: 0,
+    paidInvoices: 0,
+    pendingInvoices: 0,
     totalHours: 0,
     totalEarned: 0,
     totalExpenses: 0,
     netProfit: 0,
   })
-  const [chartData, setChartData] = useState([])
-  const [goal, setGoal] = useState(user?.monthlyGoal || 100000)
-  const [newGoalInput, setNewGoalInput] = useState(user?.monthlyGoal || 100000)
-  const [isEditingGoal, setIsEditingGoal] = useState(false)
+  const [cashflowData, setCashflowData] = useState([])
+  const [projectProgressData, setProjectProgressData] = useState([])
+  const [recentActivity, setRecentActivity] = useState([])
+  const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
+  const [topClients, setTopClients] = useState([])
+  const [paymentSummary, setPaymentSummary] = useState({
+    totalReceived: 0,
+    totalOutstanding: 0,
+    paidClients: 0,
+    recentPayments: [],
+  })
+  const [overdueCount, setOverdueCount] = useState(0)
 
   useEffect(() => {
-    fetchStats()
-    if (user?.monthlyGoal) {
-      setGoal(user.monthlyGoal)
-      setNewGoalInput(user.monthlyGoal)
-    }
-  }, [user?.monthlyGoal])
+    fetchDashboard()
+  }, [])
 
-  const fetchStats = async () => {
+  const fetchDashboard = async () => {
     try {
       const [clientsRes, projectsRes, invoicesRes, logsRes, expensesRes] = await Promise.all([
         api.get('/clients'),
@@ -43,293 +85,521 @@ export default function Dashboard() {
         api.get('/expenses'),
       ])
 
-      const invoices = invoicesRes.data.invoices
-      const logs = logsRes.data.logs
-      const expenses = expensesRes.data.expenses
+      const clients = clientsRes.data.clients || []
+      const projects = projectsRes.data.projects || []
+      const invoices = invoicesRes.data.invoices || []
+      const logs = logsRes.data.logs || []
+      const expenses = expensesRes.data.expenses || []
 
-      const totalEarned = invoices
-        .filter((i) => i.status === 'paid')
-        .reduce((acc, i) => acc + i.total, 0)
-        
-      const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0)
-      const netProfit = totalEarned - totalExpenses
+      const paidInvoices = invoices.filter((item) => item.status === 'paid')
+      const pendingInvoices = invoices.filter((item) => item.status !== 'paid')
+      const totalEarned = paidInvoices.reduce((sum, item) => sum + Number(item.total || 0), 0)
+      const totalExpenses = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+      const totalHours = logs.reduce((sum, item) => sum + Number(item.duration || 0), 0) / 60
 
-      setStats({
-        clients: clientsRes.data.clients.length,
-        projects: projectsRes.data.projects.length,
-        totalHours: (logs.reduce((acc, l) => acc + l.duration, 0) / 60).toFixed(1),
+      setOverview({
+        clients: clients.length,
+        projects: projects.length,
+        paidInvoices: paidInvoices.length,
+        pendingInvoices: pendingInvoices.length,
+        totalHours,
         totalEarned,
         totalExpenses,
-        netProfit,
+        netProfit: totalEarned - totalExpenses,
       })
 
-      // Group revenue & expenses for the past 6 months
+      setOverdueCount(invoices.filter((item) => item.status === 'overdue').length)
+
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-      const last6 = Array.from({ length: 6 }, (_, i) => {
-        const d = new Date()
-        d.setMonth(d.getMonth() - (5 - i))
-        const m = d.getMonth()
-        const y = d.getFullYear()
+      const last6Months = Array.from({ length: 6 }, (_, index) => {
+        const date = new Date()
+        date.setMonth(date.getMonth() - (5 - index))
+        const month = date.getMonth()
+        const year = date.getFullYear()
 
-        const monthlyRevenue = invoices
-          .filter(
-            (inv) =>
-              inv.status === 'paid' &&
-              new Date(inv.createdAt).getMonth() === m &&
-              new Date(inv.createdAt).getFullYear() === y
-          )
-          .reduce((acc, inv) => acc + inv.total, 0)
+        const revenue = paidInvoices
+          .filter((item) => {
+            const created = new Date(item.createdAt)
+            return created.getMonth() === month && created.getFullYear() === year
+          })
+          .reduce((sum, item) => sum + Number(item.total || 0), 0)
 
-        const monthlyExpenses = expenses
-          .filter(
-            (exp) =>
-              new Date(exp.date).getMonth() === m &&
-              new Date(exp.date).getFullYear() === y
-          )
-          .reduce((acc, exp) => acc + exp.amount, 0)
+        const spend = expenses
+          .filter((item) => {
+            const created = new Date(item.date)
+            return created.getMonth() === month && created.getFullYear() === year
+          })
+          .reduce((sum, item) => sum + Number(item.amount || 0), 0)
 
         return {
-          month: months[m],
-          revenue: monthlyRevenue,
-          expenses: monthlyExpenses,
+          month: months[month],
+          revenue,
+          expenses: spend,
+          profit: revenue - spend,
         }
       })
-      setChartData(last6)
-    } catch {}
-  }
+      setCashflowData(last6Months)
 
-  const handleSaveGoal = async () => {
-    const goalVal = Number(newGoalInput)
-    if (!goalVal || goalVal <= 0) {
-      toast.error('Please enter a valid monthly target.')
-      return
-    }
+      const progressRows = projects
+        .map((project) => {
+          const totalTasks = project.tasks?.length || 0
+          const completedTasks = project.tasks?.filter((task) => task.completed).length || 0
+          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+          return {
+            name: project.title,
+            progress,
+            status: project.status || 'active',
+          }
+        })
+        .slice(0, 6)
+      setProjectProgressData(progressRows)
 
-    try {
-      const { data } = await api.put('/auth/goal', { monthlyGoal: goalVal })
-      setAuth(data.user, token)
-      setGoal(data.user.monthlyGoal)
-      setIsEditingGoal(false)
-      toast.success('Monthly goal updated!')
-      if (stats.totalEarned >= goalVal) {
-        toast('🎉 Congratulations! You have achieved your monthly target goal!', { icon: '👏' })
-      }
+      const activities = [
+        ...paidInvoices.slice(-4).map((item) => ({
+          id: `invoice-${item._id}`,
+          title: `Invoice ${item.invoiceNumber} marked paid`,
+          meta: item.client?.name || 'Client invoice',
+          time: item.updatedAt || item.createdAt,
+          kind: 'payment',
+        })),
+        ...projects.slice(-4).map((item) => ({
+          id: `project-${item._id}`,
+          title: `Project updated: ${item.title}`,
+          meta: item.status || 'active',
+          time: item.updatedAt || item.createdAt,
+          kind: 'project',
+        })),
+      ]
+        .sort((a, b) => new Date(b.time) - new Date(a.time))
+        .slice(0, 6)
+      setRecentActivity(activities)
+
+      const deadlines = projects
+        .filter((item) => item.deadline)
+        .map((item) => ({
+          id: item._id,
+          title: item.title,
+          client: item.client?.name || 'No client',
+          deadline: item.deadline,
+          status: item.status || 'active',
+        }))
+        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
+        .slice(0, 5)
+      setUpcomingDeadlines(deadlines)
+
+      const revenueByClient = {}
+      paidInvoices.forEach((invoice) => {
+        if (!invoice.client?._id) return
+        if (!revenueByClient[invoice.client._id]) {
+          revenueByClient[invoice.client._id] = {
+            id: invoice.client._id,
+            name: invoice.client.name,
+            invoices: 0,
+            revenue: 0,
+          }
+        }
+        revenueByClient[invoice.client._id].invoices += 1
+        revenueByClient[invoice.client._id].revenue += Number(invoice.total || 0)
+      })
+
+      setTopClients(
+        Object.values(revenueByClient)
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 5)
+      )
+
+      const recentPayments = clients
+        .flatMap((client) =>
+          (client.payments || []).map((payment) => ({
+            id: `${client._id}-${payment._id || payment.date}`,
+            clientName: client.name,
+            amount: Number(payment.amount || 0),
+            date: payment.date,
+            note: payment.note || '',
+            screenshot: payment.screenshot || '',
+          }))
+        )
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 5)
+
+      setPaymentSummary({
+        totalReceived: clients.reduce((sum, client) => sum + Number(client.amountPaid || 0), 0),
+        totalOutstanding: clients.reduce((sum, client) => sum + Number(client.remainingAmount || 0), 0),
+        paidClients: clients.filter((client) => client.paymentStatus === 'paid').length,
+        recentPayments,
+      })
     } catch {
-      toast.error('Failed to update target')
+      toast.error('Failed to load dashboard data')
     }
   }
 
-  const goalProgress = Math.min(100, Math.round((stats.totalEarned / goal) * 100)) || 0
-
-  const cards = [
-    { label: 'Total Clients', value: stats.clients, icon: Users, theme: 'indigo', path: '/clients' },
-    { label: 'Active Projects', value: stats.projects, icon: FolderOpen, theme: 'emerald', path: '/projects' },
-    { label: 'Hours Tracked', value: `${stats.totalHours}h`, icon: Clock, theme: 'amber', path: '/time-tracker' },
-    { label: 'Total Revenue', value: `₹${Number(stats.totalEarned).toLocaleString('en-IN')}`, icon: DollarSign, theme: 'sky', path: '/invoices' },
-    { label: 'Total Expenses', value: `₹${Number(stats.totalExpenses).toLocaleString('en-IN')}`, icon: Wallet, theme: 'rose', path: '/expenses' },
-    { 
-      label: 'Net Profit', 
-      value: `₹${Number(stats.netProfit).toLocaleString('en-IN')}`, 
-      icon: stats.netProfit >= 0 ? TrendingUp : ArrowUpRight, 
-      theme: stats.netProfit >= 0 ? 'emerald' : 'rose', 
-      path: '/invoices' 
-    },
-  ]
-
-  const cardThemeMap = {
-    indigo: {
-      iconBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
-      hoverBorder: 'hover:border-indigo-500/30 hover:shadow-indigo-500/5',
-    },
-    emerald: {
-      iconBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-      hoverBorder: 'hover:border-emerald-500/30 hover:shadow-emerald-500/5',
-    },
-    sky: {
-      iconBg: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
-      hoverBorder: 'hover:border-sky-500/30 hover:shadow-sky-500/5',
-    },
-    amber: {
-      iconBg: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-      hoverBorder: 'hover:border-amber-500/30 hover:shadow-amber-500/5',
-    },
-    rose: {
-      iconBg: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
-      hoverBorder: 'hover:border-rose-500/30 hover:shadow-rose-500/5',
-    },
-  }
+  const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`
+  const formatDate = (value) => new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  const daysUntil = (value) => Math.ceil((new Date(value).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
 
   return (
-    <AnimatedPage className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto relative overflow-hidden text-gray-200">
-      
-      {/* Glow Ambient background details */}
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/4 left-10 w-80 h-80 bg-purple-500/5 rounded-full blur-[100px] pointer-events-none" />
+    <div className="page-container space-y-8">
+      <PageHeader
+        eyebrow="Business Overview"
+        title={`Welcome back, ${user?.name || 'there'}`}
+        description="A focused view of revenue, project health, upcoming deadlines, and the work that needs attention next."
+        actions={(
+          <>
+            <button onClick={() => navigate('/projects')} className="btn-secondary">
+              <FolderKanban size={16} /> Open Projects
+            </button>
+            <button onClick={() => navigate('/invoices')} className="btn-primary">
+              <Receipt size={16} /> Review Invoices
+            </button>
+          </>
+        )}
+      />
 
-      {/* Confetti Animation wrapper if goal is reached */}
-      {goalProgress >= 100 && (
-        <div className="absolute top-0 left-0 right-0 h-1 pointer-events-none flex justify-around select-none z-10">
-          {[...Array(6)].map((_, i) => (
-            <span
-              key={i}
-              className="text-xl animate-bounce"
-              style={{ animationDuration: `${2 + i}s`, animationIterationCount: 'infinite' }}
-            >
-              🎉
-            </span>
-          ))}
-        </div>
-      )}
+      {overdueCount > 0 ? (
+        <SurfaceCard className="border-rose-400/20 bg-rose-500/8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-2xl border border-rose-400/20 bg-rose-500/10 p-3 text-rose-200">
+                <AlertCircle size={18} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-rose-100">You have {overdueCount} overdue invoice{overdueCount > 1 ? 's' : ''}</p>
+                <p className="mt-1 text-sm text-rose-200/80">Nudge these clients today to improve cash flow and reduce follow-up friction.</p>
+              </div>
+            </div>
+            <button onClick={() => navigate('/invoices')} className="btn-secondary text-rose-100">
+              View overdue invoices
+            </button>
+          </div>
+        </SurfaceCard>
+      ) : null}
 
-      {/* Greetings section */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
-            Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-indigo-300 to-purple-400">{user?.name}</span>! 👋
-          </h1>
-          <p className="text-gray-400 text-xs mt-1.5 font-semibold uppercase tracking-wider">
-            Here's what's happening with your business today.
-          </p>
-        </div>
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Revenue"
+          value={formatCurrency(overview.totalEarned)}
+          icon={DollarSign}
+          accent="indigo"
+          delta={Math.round((overview.netProfit / Math.max(overview.totalEarned || 1, 1)) * 100)}
+          deltaLabel="profit margin"
+          onClick={() => navigate('/invoices')}
+        />
+        <MetricCard
+          label="Active Projects"
+          value={overview.projects}
+          icon={BriefcaseBusiness}
+          accent="cyan"
+          delta={overview.clients}
+          deltaLabel="clients engaged"
+          onClick={() => navigate('/projects')}
+        />
+        <MetricCard
+          label="Pending Invoices"
+          value={overview.pendingInvoices}
+          icon={Receipt}
+          accent="rose"
+          delta={overview.paidInvoices}
+          deltaLabel="paid so far"
+          onClick={() => navigate('/invoices')}
+        />
+        <MetricCard
+          label="Billable Hours"
+          value={`${overview.totalHours.toFixed(1)}h`}
+          icon={Clock3}
+          accent="emerald"
+          delta={overview.projects}
+          deltaLabel="projects tracked"
+          onClick={() => navigate('/time-tracker')}
+        />
       </div>
 
-      {/* Goal Target Ring / Progress Banner */}
-      <div className="bg-[#111118]/60 border border-white/[0.04] backdrop-blur-md rounded-2xl p-6 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-        {goalProgress >= 100 && (
-          <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-24 h-24 rounded-full bg-emerald-500/10 flex items-center justify-center">
-            <Sparkles className="text-emerald-400 animate-pulse" size={24} />
+      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+        <SurfaceCard className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-lg font-semibold text-slate-50">Client collections</p>
+              <p className="text-sm text-slate-400">Received payments and pending balances across all clients.</p>
+            </div>
+            <Wallet className="text-slate-500" size={18} />
           </div>
-        )}
-        
-        <div className="flex-1 w-full space-y-3">
-          <div className="flex items-center justify-between md:justify-start gap-3">
-            <span className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Monthly Target Tracker</span>
-            {isEditingGoal ? (
-              <div className="flex items-center gap-1.5 bg-[#0a0a0f] border border-white/10 rounded-xl px-2 py-1">
-                <input
-                  type="number"
-                  value={newGoalInput}
-                  onChange={(e) => setNewGoalInput(e.target.value)}
-                  className="bg-transparent text-white text-xs font-semibold w-24 focus:outline-none"
-                  autoFocus
-                />
-                <button onClick={handleSaveGoal} className="p-1 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition"><Check size={12} /></button>
-                <button onClick={() => { setIsEditingGoal(false); setNewGoalInput(goal) }} className="p-1 hover:bg-red-500/20 text-red-400 rounded-lg transition"><X size={12} /></button>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Received</p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-300">{formatCurrency(paymentSummary.totalReceived)}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Pending</p>
+              <p className="mt-2 text-2xl font-semibold text-rose-300">{formatCurrency(paymentSummary.totalOutstanding)}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Paid clients</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-50">{paymentSummary.paidClients}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {paymentSummary.recentPayments.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-400">
+                Payments recorded from clients will appear here.
               </div>
             ) : (
-              <button
-                onClick={() => setIsEditingGoal(true)}
-                className="text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 bg-indigo-500/5 hover:bg-indigo-500/10 rounded-lg border border-indigo-500/10"
-                title="Edit Target"
-              >
-                <Edit2 size={10} /> Edit Goal
-              </button>
+              paymentSummary.recentPayments.map((payment) => (
+                <div key={payment.id} className="surface-card-compact">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-100">{payment.clientName}</p>
+                      <p className="mt-1 text-xs text-slate-500">{payment.note || 'Payment received'}</p>
+                    </div>
+                    <p className="text-sm font-semibold text-emerald-300">{formatCurrency(payment.amount)}</p>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">{formatDate(payment.date)}</p>
+                </div>
+              ))
             )}
           </div>
+        </SurfaceCard>
 
-          <div className="flex items-baseline gap-2">
-            <p className="text-3xl font-black text-white tracking-tight">₹{Number(stats.totalEarned).toLocaleString('en-IN')}</p>
-            <span className="text-xs text-gray-500 font-medium">earned of ₹{Number(goal).toLocaleString('en-IN')} goal</span>
+        <SurfaceCard className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-lg font-semibold text-slate-50">Revenue health</p>
+              <p className="text-sm text-slate-400">A quick snapshot of invoicing and collection status.</p>
+            </div>
+            <Receipt size={18} className="text-slate-500" />
           </div>
-
-          {/* Progress bar */}
-          <div className="w-full bg-white/[0.02] rounded-full h-2.5 border border-white/[0.04] overflow-hidden p-[2px]">
-            <div
-              className={`h-full rounded-full transition-all duration-1000 bg-gradient-to-r relative ${goalProgress >= 100 ? 'from-emerald-500 to-teal-500' : 'from-indigo-500 to-purple-500'}`}
-              style={{ width: `${goalProgress}%` }}
-            >
-              <div className="absolute inset-0 bg-white/20 animate-pulse" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Paid invoices</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-50">{overview.paidInvoices}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Pending invoices</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-50">{overview.pendingInvoices}</p>
             </div>
           </div>
-        </div>
-
-        <div className="flex flex-row md:flex-col items-center justify-between md:justify-center shrink-0 border-t md:border-t-0 md:border-l border-white/[0.06] pt-4 md:pt-0 md:pl-8 w-full md:w-auto">
-          <p className="text-3xl font-black text-white">{goalProgress}%</p>
-          <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Completion</p>
-        </div>
+        </SurfaceCard>
       </div>
 
-      {/* Grid boxes */}
-      <motion.div
-        variants={{
-          hidden: { opacity: 0 },
-          show: {
-            opacity: 1,
-            transition: {
-              staggerChildren: 0.05
-            }
-          }
-        }}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-      >
-        {cards.map(({ label, value, icon: Icon, theme, path }) => (
-          <motion.div
-            key={label}
-            variants={{
-              hidden: { opacity: 0, y: 10 },
-              show: { opacity: 1, y: 0 }
-            }}
-            whileHover={{ y: -3, scale: 1.01 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-            onClick={() => navigate(path)}
-            className={`bg-[#111118]/60 backdrop-blur-md rounded-2xl p-6 border border-white/[0.04] cursor-pointer shadow-lg transition-all duration-300 ${cardThemeMap[theme]?.hoverBorder || cardThemeMap['indigo'].hoverBorder}`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">{label}</span>
-              <div className={`p-2.5 rounded-xl border ${cardThemeMap[theme]?.iconBg || cardThemeMap['indigo'].iconBg}`}>
-                <Icon size={16} />
+      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+        <SurfaceCard>
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-lg font-semibold text-slate-50">Revenue analytics</p>
+              <p className="text-sm text-slate-400">Paid revenue, expenses, and resulting profit across the last six months.</p>
+            </div>
+            <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-slate-400">
+              Net profit {formatCurrency(overview.netProfit)}
+            </div>
+          </div>
+          <div className="h-[320px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={cashflowData}>
+                <defs>
+                  <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366F1" stopOpacity={0.55} />
+                    <stop offset="100%" stopColor="#6366F1" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                <XAxis dataKey="month" stroke="#64748b" tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value / 1000}k`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: 'var(--tooltip-bg)', border: '1px solid var(--tooltip-border)', borderRadius: '18px', color: 'var(--text)' }}
+                  formatter={(value, label) => [formatCurrency(value), label === 'revenue' ? 'Revenue' : label === 'expenses' ? 'Expenses' : 'Profit']}
+                />
+                <Area type="monotone" dataKey="revenue" stroke="#818cf8" strokeWidth={2.5} fill="url(#revenueFill)" />
+                <Area type="monotone" dataKey="expenses" stroke="#22d3ee" strokeWidth={2} fill="transparent" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </SurfaceCard>
+
+        <SurfaceCard>
+          <div className="mb-6">
+            <p className="text-lg font-semibold text-slate-50">Project progress</p>
+            <p className="text-sm text-slate-400">A quick scan of delivery momentum across active workspaces.</p>
+          </div>
+          {projectProgressData.length === 0 ? (
+            <EmptyState
+              icon={FolderKanban}
+              title="No project data yet"
+              description="Create projects to unlock delivery progress, timelines, and collaboration visibility."
+              action={<button onClick={() => navigate('/projects')} className="btn-primary">Open Projects</button>}
+            />
+          ) : (
+            <div className="space-y-3">
+              {projectProgressData.map((project) => {
+                const barColor = STATUS_COLORS[project.status] || STATUS_COLORS.active
+                return (
+                  <div key={project.name} className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4 transition hover:bg-white/[0.05]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-50">{project.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{STATUS_LABELS[project.status] || project.status}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-slate-100">{project.progress}%</p>
+                        <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Progress</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 h-2 rounded-full border border-white/10 bg-white/[0.03] p-[2px]">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(project.progress, 4)}%`,
+                          background: `linear-gradient(90deg, ${barColor}, rgba(34, 211, 238, 0.95))`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </SurfaceCard>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <SurfaceCard className="xl:col-span-1">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="text-lg font-semibold text-slate-50">Recent activity</p>
+              <p className="text-sm text-slate-400">Latest movements across projects and payments.</p>
+            </div>
+            <TrendingUp size={18} className="text-slate-500" />
+          </div>
+          <div className="space-y-3">
+            {recentActivity.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-400">
+                Activity will appear here as you work.
               </div>
-            </div>
-            <p className="text-3xl font-black text-white tracking-tight">{value}</p>
-          </motion.div>
-        ))}
-      </motion.div>
-
-      {/* Charts container */}
-      <div className="bg-[#111118]/60 backdrop-blur-md rounded-2xl p-6 border border-white/[0.04] shadow-2xl">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="text-lg font-bold text-white">Cashflow Analysis</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Calculated based on paid invoice revenue vs. expenses for the past 6 months</p>
+            ) : (
+              recentActivity.map((item) => (
+                <div key={item.id} className="surface-card-compact">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-100">{item.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">{item.meta}</p>
+                    </div>
+                    <ArrowUpRight size={14} className="text-slate-500" />
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">{formatDate(item.time)}</p>
+                </div>
+              ))
+            )}
           </div>
-          <div className="flex gap-4 text-xs font-semibold text-gray-400">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-indigo-500" /> Revenue
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-pink-500" /> Expenses
-            </div>
-          </div>
-        </div>
+        </SurfaceCard>
 
-        <div className="w-full h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-              <defs>
-                <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6366F1" stopOpacity={0.6} />
-                  <stop offset="100%" stopColor="#6366F1" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" vertical={false} />
-              <XAxis dataKey="month" stroke="#4b5563" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#4b5563" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val}`} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#0d0d12', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px' }}
-                labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: '12px' }}
-                formatter={(value, name) => [
-                  `₹${Number(value).toLocaleString('en-IN')}`, 
-                  name === 'revenue' ? 'Revenue' : 'Expenses'
-                ]}
-              />
-              <Bar dataKey="revenue" fill="url(#chartGradient)" stroke="#6366F1" strokeWidth={1} name="revenue" radius={[6, 6, 0, 0]} maxBarSize={32} />
-              <Line type="monotone" dataKey="expenses" name="expenses" stroke="#EC4899" strokeWidth={2} dot={{ r: 3, strokeWidth: 1 }} activeDot={{ r: 5 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        <SurfaceCard>
+          <div className="mb-5">
+            <p className="text-lg font-semibold text-slate-50">Upcoming deadlines</p>
+            <p className="text-sm text-slate-400">Projects requiring attention soon.</p>
+          </div>
+          <div className="space-y-3">
+            {upcomingDeadlines.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-400">
+                No upcoming deadlines found.
+              </div>
+            ) : (
+              upcomingDeadlines.map((item) => {
+                const remaining = daysUntil(item.deadline)
+                return (
+                  <div key={item.id} className="surface-card-compact">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-100">{item.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">{item.client}</p>
+                      </div>
+                      <StatusBadge status={item.status} />
+                    </div>
+                    <div className="mt-4 flex items-center justify-between text-xs">
+                      <span className="text-slate-400">{formatDate(item.deadline)}</span>
+                      <span className={remaining < 0 ? 'text-rose-300' : remaining === 0 ? 'text-amber-300' : 'text-emerald-300'}>
+                        {remaining < 0 ? `${Math.abs(remaining)}d overdue` : remaining === 0 ? 'Due today' : `${remaining}d left`}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </SurfaceCard>
+
+        <SurfaceCard>
+          <div className="mb-5">
+            <p className="text-lg font-semibold text-slate-50">Top clients</p>
+            <p className="text-sm text-slate-400">Highest-paying relationships in your pipeline.</p>
+          </div>
+          <div className="space-y-3">
+            {topClients.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-400">
+                Paid invoices will populate this list.
+              </div>
+            ) : (
+              topClients.map((client, index) => (
+                <div key={client.id} className="surface-card-compact">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 text-sm font-semibold text-slate-100">
+                      {client.name?.slice(0, 1)?.toUpperCase() || index + 1}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-100">{client.name}</p>
+                      <p className="text-xs text-slate-500">{client.invoices} paid invoice{client.invoices > 1 ? 's' : ''}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-slate-100">{formatCurrency(client.revenue)}</p>
+                      <p className="text-xs text-slate-500">rank #{index + 1}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </SurfaceCard>
       </div>
-    </AnimatedPage>
+
+      <div className="grid gap-5 md:grid-cols-3">
+        <SurfaceCard className="md:col-span-1">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+              <Users size={18} className="text-slate-200" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-100">Clients</p>
+              <p className="text-xs text-slate-500">Active client relationships</p>
+            </div>
+          </div>
+          <p className="mt-6 text-3xl font-semibold text-slate-50">{overview.clients}</p>
+        </SurfaceCard>
+
+        <SurfaceCard className="md:col-span-1">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+              <FolderKanban size={18} className="text-slate-200" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-100">Expenses</p>
+              <p className="text-xs text-slate-500">Tracked operational spend</p>
+            </div>
+          </div>
+          <p className="mt-6 text-3xl font-semibold text-slate-50">{formatCurrency(overview.totalExpenses)}</p>
+        </SurfaceCard>
+
+        <SurfaceCard className="md:col-span-1">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+              <TrendingUp size={18} className="text-slate-200" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-100">Net profit</p>
+              <p className="text-xs text-slate-500">Revenue minus expenses</p>
+            </div>
+          </div>
+          <p className="mt-6 text-3xl font-semibold text-slate-50">{formatCurrency(overview.netProfit)}</p>
+        </SurfaceCard>
+      </div>
+    </div>
   )
 }
