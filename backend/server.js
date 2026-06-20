@@ -16,9 +16,17 @@ const server = http.createServer(app);
 // Socket.io setup
 const allowedOrigins = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : ['http://localhost:5173'];
 const isLocalDevOrigin = (origin) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin);
+const isVercelOrigin = (origin) => origin && (origin.endsWith('.vercel.app') || origin === process.env.FRONTEND_URL);
+
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: function(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin) || isLocalDevOrigin(origin) || isVercelOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Blocked by CORS policy'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -51,7 +59,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Strict CORS Setup
 app.use(cors({
   origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || (process.env.NODE_ENV === 'development' && isLocalDevOrigin(origin))) {
+    if (!origin || allowedOrigins.includes(origin) || isVercelOrigin(origin) || (process.env.NODE_ENV === 'development' && isLocalDevOrigin(origin))) {
       callback(null, true);
     } else {
       callback(new Error('Blocked by CORS policy'));
