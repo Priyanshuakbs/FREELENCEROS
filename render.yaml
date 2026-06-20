@@ -1,0 +1,54 @@
+services:
+  # ─── Backend Web Service ───────────────────────────────────────────────────
+  - type: web
+    name: freelanceros-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGO_URI
+        sync: false        # Set this manually in Render Dashboard
+      - key: JWT_SECRET
+        sync: false        # Set this manually in Render Dashboard
+      - key: JWT_EXPIRE
+        value: 30d
+      - key: FRONTEND_URL
+        sync: false        # Set to your Render frontend URL after deploy
+      - key: ANTHROPIC_API_KEY
+        sync: false        # Set this manually in Render Dashboard
+      - key: GEMINI_API_KEY
+        sync: false        # Set this manually in Render Dashboard
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false        # Set this manually in Render Dashboard
+      - key: SMTP_PASS
+        sync: false        # Set this manually in Render Dashboard
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false        # Set this manually in Render Dashboard
+      - key: CLOUDINARY_API_KEY
+        sync: false        # Set this manually in Render Dashboard
+      - key: CLOUDINARY_API_SECRET
+        sync: false        # Set this manually in Render Dashboard
+
+  # ─── Frontend Static Site ──────────────────────────────────────────────────
+  - type: web
+    name: freelanceros-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false        # Set to your Render backend URL after deploy
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
