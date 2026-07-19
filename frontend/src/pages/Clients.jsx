@@ -38,7 +38,7 @@ const emptyPaymentForm = {
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`
 
-export default function Clients() {
+export default function Clients({ embedded = false }) {
   const [clients, setClients] = useState([])
   const [showArchived, setShowArchived] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -237,22 +237,19 @@ export default function Clients() {
   }, [clients])
 
   return (
-    <div className="page-container max-w-none space-y-8">
-      <PageHeader
-        eyebrow="Client Relationships"
-        title="Clients"
-        description="Manage client records, payment milestones, proofs, notes, and onboard new accounts from one payment-aware workspace."
-        actions={(
-          <>
+    <div className={embedded ? "space-y-8 animate-in fade-in duration-200" : "page-container max-w-none space-y-8"}>
+      {!embedded && (
+        <PageHeader
+          eyebrow="Client Relationships"
+          title="Clients"
+          description="Manage client records, payment milestones, proofs, notes, and onboard new accounts from one payment-aware workspace."
+          actions={(
             <button onClick={handleGenerateOnboardingLink} disabled={linkLoading} className="btn-secondary">
               <Link size={16} /> {linkLoading ? 'Generating...' : 'Onboarding Link'}
             </button>
-            <button onClick={openCreate} className="btn-primary">
-              <Plus size={16} /> Add Client
-            </button>
-          </>
-        )}
-      />
+          )}
+        />
+      )}
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Total Clients" value={stats.totalClients} icon={UserRound} accent="indigo" />
@@ -314,7 +311,7 @@ export default function Clients() {
               <p className="text-lg font-semibold text-slate-50">Client directory</p>
               <p className="text-sm text-slate-400">Search contacts, review account readiness, and jump into payment ledgers quickly.</p>
             </div>
-            <div className="flex items-center gap-3 w-full max-w-lg">
+            <div className="flex items-center gap-3 w-full max-w-2xl justify-end">
               <SearchField value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, notes, tags..." />
               <button
                 onClick={() => setShowArchived(!showArchived)}
@@ -322,6 +319,11 @@ export default function Clients() {
               >
                 {showArchived ? 'View Active' : 'View Archived'}
               </button>
+              {embedded && (
+                <button onClick={handleGenerateOnboardingLink} disabled={linkLoading} className="btn-secondary px-4 py-2.5 text-xs font-semibold flex-shrink-0">
+                  <Link size={14} className="mr-1 inline-block" /> {linkLoading ? 'Generating...' : 'Onboarding Link'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -330,13 +332,9 @@ export default function Clients() {
               icon={Search}
               title={clients.length === 0 ? 'No clients added yet' : 'No matching clients found'}
               description={clients.length === 0
-                ? 'Create your first client record to start projects, invoices, and collaboration flows.'
+                ? 'Your clients will appear here once you convert leads to clients from the CRM Leads pipeline.'
                 : 'Try a different search term or clear the filters to see your full directory.'}
-              action={clients.length === 0 ? (
-                <button onClick={openCreate} className="btn-primary">
-                  Add First Client
-                </button>
-              ) : null}
+              action={null}
             />
           ) : (
             <div className="grid gap-5 xl:grid-cols-1">

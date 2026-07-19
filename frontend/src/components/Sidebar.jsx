@@ -28,7 +28,6 @@ const adminSections = [
     label: 'Delivery',
     items: [
       { name: 'Leads', path: '/leads', icon: PhoneCall, description: 'CRM & pipeline' },
-      { name: 'Clients', path: '/clients', icon: Users, description: 'Client relationships' },
       { name: 'Projects', path: '/projects', icon: FolderKanban, description: 'Project delivery' },
       { name: 'Kanban', path: '/kanban', icon: CheckSquare, description: 'Task board' },
       { name: 'Time Tracker', path: '/time-tracker', icon: Clock3, description: 'Billable hours' },

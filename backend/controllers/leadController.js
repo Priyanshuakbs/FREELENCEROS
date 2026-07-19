@@ -39,6 +39,31 @@ const sendProposalEmailHelper = async (lead, req) => {
   });
 };
 
+const sendWelcomeEmailHelper = async (lead, req) => {
+  if (!lead.email) return;
+
+  const freelancerName = req.user.name || 'Freelancer';
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; padding: 25px; color: #333; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #f8fafc;">
+      <h2 style="color: #4f46e5; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-top: 0;">Thank You for Connecting! 👋</h2>
+      <p>Hi ${lead.name},</p>
+      <p>Thank you for reaching out. We have successfully registered your interest and details in our system.</p>
+      ${lead.requirements ? `<p style="background-color: #f1f5f9; padding: 12px; border-radius: 8px; font-size: 14px; color: #475569;"><strong>Your requirements:</strong><br/>${lead.requirements}</p>` : ''}
+      <p>We are currently reviewing your details and will get in touch with you shortly to discuss next steps.</p>
+      <p>Best regards,<br/><strong>${freelancerName}</strong></p>
+      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
+      <p style="font-size: 11px; color: #94a3b8; text-align: center;">Sent via FreelanceOS</p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: lead.email,
+    subject: `👋 Thank you for connecting - ${freelancerName}`,
+    html: htmlContent,
+    text: `Hi ${lead.name}, Thank you for connecting. We have received your requirements and will get in touch with you shortly.`,
+  });
+};
+
 // ── GET all leads ────────────────────────────────────────────────────────────
 exports.getLeads = async (req, res) => {
   try {
@@ -70,11 +95,21 @@ exports.getLead = async (req, res) => {
 // ── CREATE lead ──────────────────────────────────────────────────────────────
 exports.createLead = async (req, res) => {
   try {
-    const lead = await Lead.create({
+    const lead = new Lead({
       ...req.body,
       budget: Number(req.body.budget || 0),
       createdBy: req.user._id,
     });
+
+    if (lead.email) {
+      if (lead.status === 'Proposal Sent') {
+        await sendProposalEmailHelper(lead, req);
+      } else {
+        await sendWelcomeEmailHelper(lead, req);
+      }
+    }
+
+    await lead.save();
 
     res.status(201).json({ success: true, message: 'Lead created successfully', lead });
   } catch (err) {

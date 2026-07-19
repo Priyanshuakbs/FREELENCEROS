@@ -183,11 +183,7 @@ export default function App() {
 
         <Route
           path="/clients"
-          element={
-            <AdminRoute>
-              <Clients />
-            </AdminRoute>
-          }
+          element={<Navigate to="/leads" replace />}
         />
 
         {/* ⭐ NEW LEADS MODULE */}

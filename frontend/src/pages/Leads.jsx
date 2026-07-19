@@ -19,6 +19,7 @@ import SurfaceCard from '../components/ui/SurfaceCard'
 import SearchField from '../components/ui/SearchField'
 import EmptyState from '../components/ui/EmptyState'
 import StatusBadge from '../components/ui/StatusBadge'
+import Clients from './Clients'
 
 const emptyForm = {
   name: '',
@@ -36,6 +37,7 @@ const emptyForm = {
 export default function Leads() {
   const navigate = useNavigate()
 
+  const [activeTab, setActiveTab] = useState('leads') // 'leads' | 'clients'
   const [loading, setLoading] = useState(true)
   const [leads, setLeads] = useState([])
   const [search, setSearch] = useState('')
@@ -148,10 +150,10 @@ export default function Leads() {
   return (
     <div className="page-container space-y-8">
       <PageHeader
-        eyebrow="CRM"
-        title="Lead Management"
-        description="Track, manage and convert leads into clients."
-        actions={(
+        eyebrow={activeTab === 'leads' ? "CRM" : "Client Relationships"}
+        title={activeTab === 'leads' ? "Lead Management" : "Clients"}
+        description={activeTab === 'leads' ? "Track, manage and convert leads into clients." : "Manage client records, payment milestones, proofs, notes, and onboarding."}
+        actions={activeTab === 'leads' ? (
           <>
             <button className="btn-secondary" onClick={fetchLeads}>
               <RefreshCcw size={16} /> Refresh
@@ -160,141 +162,171 @@ export default function Leads() {
               <Plus size={16} /> Add Lead
             </button>
           </>
-        )}
+        ) : null}
       />
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total Leads" value={stats.total} icon={PhoneCall} accent="amber" />
-        <MetricCard label="Converted" value={stats.converted} icon={BadgeCheck} accent="emerald" />
-        <MetricCard label="Pending" value={stats.pending} icon={Users} accent="cyan" />
-        <MetricCard
-          label="Pipeline Value"
-          value={`₹${stats.revenue.toLocaleString('en-IN')}`}
-          icon={CircleDollarSign}
-          accent="indigo"
-        />
+      {/* Tab Navigation */}
+      <div className="flex border-b border-white/[0.04] gap-2 pb-px">
+        {[
+          { id: 'leads', label: 'Leads Pipeline', icon: PhoneCall },
+          { id: 'clients', label: 'Clients Directory', icon: Users },
+        ].map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`text-xs font-bold uppercase tracking-wider pb-3 px-4 transition-all duration-200 border-b-2 -mb-px flex items-center gap-2 ${
+                activeTab === tab.id
+                  ? 'border-indigo-500 text-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <Icon size={14} />
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
 
-      <SurfaceCard>
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <SearchField
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search leads..."
-          />
-          <div className="flex items-center gap-3">
-            <Filter size={18} className="text-slate-400" />
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="input-shell"
-            >
-              <option>All</option>
-              <option>New</option>
-              <option>Contacted</option>
-              <option>Qualified</option>
-              <option>Proposal Sent</option>
-              <option>Negotiation</option>
-              <option>Converted</option>
-              <option>Lost</option>
-            </select>
+      {activeTab === 'leads' ? (
+        <>
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Total Leads" value={stats.total} icon={PhoneCall} accent="amber" />
+            <MetricCard label="Converted" value={stats.converted} icon={BadgeCheck} accent="emerald" />
+            <MetricCard label="Pending" value={stats.pending} icon={Users} accent="cyan" />
+            <MetricCard
+              label="Pipeline Value"
+              value={`₹${stats.revenue.toLocaleString('en-IN')}`}
+              icon={CircleDollarSign}
+              accent="indigo"
+            />
           </div>
-        </div>
 
-        {loading ? (
-          <div className="py-20 text-center text-slate-400">Loading leads...</div>
-        ) : filteredLeads.length === 0 ? (
-          <EmptyState
-            icon={PhoneCall}
-            title="No leads found"
-            description="Create your first lead to start your CRM."
-            action={
-              <button className="btn-primary" onClick={openCreate}>
-                <Plus size={16} /> Add Lead
-              </button>
-            }
-          />
-        ) : (
-          <div className="mt-6 overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/10 text-left text-sm text-slate-400">
-                  <th className="py-4">Lead</th>
-                  <th>Company</th>
-                  <th>Status</th>
-                  <th>Budget</th>
-                  <th>Priority</th>
-                  <th>Follow Up</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLeads.map((lead) => (
-                  <tr key={lead._id} className="border-b border-white/5 hover:bg-white/[0.03]">
-                    <td className="py-5">
-                      <div>
-                        <p className="font-medium text-slate-100">{lead.name}</p>
-                        <p className="text-xs text-slate-500">{lead.email}</p>
-                      </div>
-                    </td>
-                    <td className="text-sm text-slate-300">{lead.company || '-'}</td>
-                    <td>
-                      <StatusBadge status={lead.status} />
-                    </td>
-                    <td className="text-sm text-slate-300">
-                      ₹{Number(lead.budget || 0).toLocaleString('en-IN')}
-                    </td>
-                    <td>
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs ${
-                          lead.priority === 'High'
-                            ? 'bg-red-500/20 text-red-300'
-                            : lead.priority === 'Medium'
-                            ? 'bg-yellow-500/20 text-yellow-300'
-                            : 'bg-green-500/20 text-green-300'
-                        }`}
-                      >
-                        {lead.priority}
-                      </span>
-                    </td>
-                    <td className="text-sm text-slate-400">
-                      {lead.followUpDate
-                        ? new Date(lead.followUpDate).toLocaleDateString('en-IN')
-                        : '-'}
-                    </td>
-                    <td>
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => navigate(`/leads/${lead._id}`)}
-                          className="btn-secondary"
-                        >
-                          View
-                        </button>
-                        <button className="btn-secondary" onClick={() => openEdit(lead)}>
-                          Edit
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => convertLead(lead._id)}
-                          disabled={lead.status === 'Converted'}
-                        >
-                          Convert
-                        </button>
-                        <button
-                          className="rounded-2xl border border-rose-400/15 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-500/20"
-                          onClick={() => deleteLead(lead._id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SurfaceCard>
+          <SurfaceCard>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <SearchField
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search leads..."
+              />
+              <div className="flex items-center gap-3">
+                <Filter size={18} className="text-slate-400" />
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="input-shell"
+                >
+                  <option>All</option>
+                  <option>New</option>
+                  <option>Contacted</option>
+                  <option>Qualified</option>
+                  <option>Proposal Sent</option>
+                  <option>Negotiation</option>
+                  <option>Converted</option>
+                  <option>Lost</option>
+                </select>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="py-20 text-center text-slate-400">Loading leads...</div>
+            ) : filteredLeads.length === 0 ? (
+              <EmptyState
+                icon={PhoneCall}
+                title="No leads found"
+                description="Create your first lead to start your CRM."
+                action={
+                  <button className="btn-primary" onClick={openCreate}>
+                    <Plus size={16} /> Add Lead
+                  </button>
+                }
+              />
+            ) : (
+              <div className="mt-6 overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10 text-left text-sm text-slate-400">
+                      <th className="py-4">Lead</th>
+                      <th>Company</th>
+                      <th>Status</th>
+                      <th>Budget</th>
+                      <th>Priority</th>
+                      <th>Follow Up</th>
+                      <th className="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLeads.map((lead) => (
+                      <tr key={lead._id} className="border-b border-white/5 hover:bg-white/[0.03]">
+                        <td className="py-5">
+                          <div>
+                            <p className="font-medium text-slate-100">{lead.name}</p>
+                            <p className="text-xs text-slate-500">{lead.email}</p>
+                          </div>
+                        </td>
+                        <td className="text-sm text-slate-300">{lead.company || '-'}</td>
+                        <td>
+                          <StatusBadge status={lead.status} />
+                        </td>
+                        <td className="text-sm text-slate-300">
+                          ₹{Number(lead.budget || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs ${
+                              lead.priority === 'High'
+                                ? 'bg-red-500/20 text-red-300'
+                                : lead.priority === 'Medium'
+                                ? 'bg-yellow-500/20 text-yellow-300'
+                                : 'bg-green-500/20 text-green-300'
+                            }`}
+                          >
+                            {lead.priority}
+                          </span>
+                        </td>
+                        <td className="text-sm text-slate-400">
+                          {lead.followUpDate
+                            ? new Date(lead.followUpDate).toLocaleDateString('en-IN')
+                            : '-'}
+                        </td>
+                        <td>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => navigate(`/leads/${lead._id}`)}
+                              className="btn-secondary"
+                            >
+                              View
+                            </button>
+                            <button className="btn-secondary" onClick={() => openEdit(lead)}>
+                              Edit
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              onClick={() => convertLead(lead._id)}
+                              disabled={lead.status === 'Converted'}
+                            >
+                              Convert
+                            </button>
+                            <button
+                              className="rounded-2xl border border-rose-400/15 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-500/20"
+                              onClick={() => deleteLead(lead._id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SurfaceCard>
+        </>
+      ) : (
+        <Clients embedded={true} />
+      )}
 
       {/* ── Add / Edit Lead Modal ── */}
       {showModal && createPortal(
