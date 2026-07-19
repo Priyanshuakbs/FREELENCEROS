@@ -110,6 +110,40 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// ── Temporary email test endpoint (remove after email is confirmed working) ──
+app.get('/api/test-email', async (req, res) => {
+  const to = req.query.to || process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER;
+  if (!to) return res.status(400).json({ error: 'No recipient. Add ?to=your@email.com' });
+
+  const envStatus = {
+    BREVO_API_KEY: process.env.BREVO_API_KEY ? '✅ set' : '❌ MISSING',
+    BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL || '❌ MISSING',
+    RESEND_API_KEY: process.env.RESEND_API_KEY ? '✅ set' : '❌ MISSING',
+    SMTP_USER: process.env.SMTP_USER || '❌ MISSING',
+    SMTP_PASS: process.env.SMTP_PASS ? '✅ set' : '❌ MISSING',
+    NODE_ENV: process.env.NODE_ENV,
+  };
+
+  try {
+    const { sendEmail } = require('./utils/emailUtil');
+    const result = await sendEmail({
+      to,
+      subject: '✅ FreelanceOS Live Email Test',
+      html: `<div style="font-family:Arial;padding:20px;background:#ecfdf5;border-radius:12px;">
+        <h2 style="color:#059669;">✅ Email delivery confirmed!</h2>
+        <p>Sent at: ${new Date().toISOString()}</p>
+        <p>To: ${to}</p>
+        <p>Method: ${result?.method || 'unknown'}</p>
+      </div>`,
+      text: 'FreelanceOS live email test successful!',
+    });
+    res.json({ success: true, to, result, envStatus });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, envStatus });
+  }
+});
+
+
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });
