@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 const https = require('https');
 
-// ── Resend API via native https (no fetch, works on all Node versions) ────────
+// ── Resend API via native https ───────────────────────────────────────────────
 const sendResendEmail = (apiKey, from, to, subject, html, text) => {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({
@@ -33,7 +33,7 @@ const sendResendEmail = (apiKey, from, to, subject, html, text) => {
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(parsed);
           } else {
-            reject(new Error(`Resend error ${res.statusCode}: ${parsed.message || JSON.stringify(parsed)}`));
+            reject(new Error(`Resend ${res.statusCode}: ${parsed.message || JSON.stringify(parsed)}`));
           }
         } catch (e) {
           reject(new Error(`Resend parse error: ${body}`));
@@ -41,47 +41,35 @@ const sendResendEmail = (apiKey, from, to, subject, html, text) => {
       });
     });
 
-    req.on('error', (err) => reject(new Error(`Resend network error: ${err.message}`)));
+    req.on('error', (err) => reject(new Error(`Resend network: ${err.message}`)));
     req.write(payload);
     req.end();
   });
 };
 
-// ── Main sendEmail function ───────────────────────────────────────────────────
+// ── Main sendEmail ────────────────────────────────────────────────────────────
 const sendEmail = async ({ to, subject, html, text }) => {
   const errors = [];
 
-  // ── METHOD 1: Resend API (Best for production — HTTP 443, never blocked) ──
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const fromEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
-      const data = await sendResendEmail(
-        process.env.RESEND_API_KEY,
-        `FreelanceOS <${fromEmail}>`,
-        to, subject, html, text
-      );
-      console.log('✅ [EMAIL] Sent via Resend. ID:', data.id);
-      return { messageId: data.id, method: 'resend' };
-    } catch (err) {
-      errors.push(`Resend: ${err.message}`);
-      console.error('❌ [EMAIL] Resend failed:', err.message);
-    }
-  }
-
-  // ── METHOD 2: Gmail SSL on port 465 (Works on Render — 465 is NOT blocked) ─
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║  METHOD 1 — Gmail SSL port 465 (PRIMARY)                               ║
+  // ║  WHY FIRST: Render does NOT block port 465. Sends to ANY email.        ║
+  // ║  Resend free plan silently drops external emails (returns 200 but      ║
+  // ║  never delivers to unregistered addresses) so we use Gmail first.      ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
   if (process.env.SMTP_USER && process.env.SMTP_PASS) {
     try {
       const transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
-        port: 465,          // SSL — Render does NOT block this port
-        secure: true,       // true for 465
+        port: 465,       // SSL — port 587 is blocked on Render, 465 is NOT
+        secure: true,    // must be true for port 465
         auth: {
           user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
+          pass: process.env.SMTP_PASS,  // Gmail App Password
         },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
-        socketTimeout: 10000,
+        socketTimeout: 15000,
       });
 
       const info = await transporter.sendMail({
@@ -92,62 +80,53 @@ const sendEmail = async ({ to, subject, html, text }) => {
         html,
       });
 
-      console.log('✅ [EMAIL] Sent via Gmail SSL (port 465). ID:', info.messageId);
-      return { messageId: info.messageId, method: 'gmail-ssl' };
+      console.log('✅ [EMAIL] Sent via Gmail SSL port 465. ID:', info.messageId, '→ To:', to);
+      return { messageId: info.messageId, method: 'gmail-ssl-465' };
     } catch (err) {
       errors.push(`Gmail SSL: ${err.message}`);
-      console.error('❌ [EMAIL] Gmail SSL (port 465) failed:', err.message);
+      console.error('❌ [EMAIL] Gmail SSL port 465 failed:', err.message);
     }
   }
 
-  // ── METHOD 3: Custom SMTP (if SMTP_HOST is set and not gmail) ────────────
-  if (process.env.SMTP_HOST && process.env.SMTP_HOST !== 'smtp.gmail.com') {
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║  METHOD 2 — Resend API (FALLBACK)                                      ║
+  // ║  NOTE: Works for any email ONLY if RESEND_FROM domain is verified      ║
+  // ║  in Resend dashboard. Free plan with onboarding@resend.dev only        ║
+  // ║  delivers to the Resend account's own registered email.                ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  if (process.env.RESEND_API_KEY) {
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-        connectionTimeout: 8000,
-        greetingTimeout: 8000,
-      });
-
-      const info = await transporter.sendMail({
-        from: `"FreelanceOS" <${process.env.SMTP_USER || 'no-reply@freelanceos.com'}>`,
-        to,
-        subject,
-        text: text || '',
-        html,
-      });
-
-      console.log('✅ [EMAIL] Sent via custom SMTP. ID:', info.messageId);
-      return { messageId: info.messageId, method: 'smtp' };
+      const fromEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
+      const data = await sendResendEmail(
+        process.env.RESEND_API_KEY,
+        `FreelanceOS <${fromEmail}>`,
+        to, subject, html, text
+      );
+      console.log('✅ [EMAIL] Sent via Resend. ID:', data.id, '→ To:', to);
+      return { messageId: data.id, method: 'resend' };
     } catch (err) {
-      errors.push(`Custom SMTP: ${err.message}`);
-      console.error('❌ [EMAIL] Custom SMTP failed:', err.message);
+      errors.push(`Resend: ${err.message}`);
+      console.error('❌ [EMAIL] Resend failed:', err.message);
     }
   }
 
   // ── All methods failed ────────────────────────────────────────────────────
   if (errors.length > 0) {
     const summary = errors.join(' | ');
-    console.error('🚨 [EMAIL] All delivery methods failed:', summary);
-    // In production, throw so the API returns an error toast to the user
+    console.error('🚨 [EMAIL] All delivery methods failed:', summary, '| To:', to);
     if (process.env.NODE_ENV === 'production') {
-      throw new Error(`Email failed to send: ${summary}`);
+      throw new Error(`Email could not be sent: ${summary}`);
     }
   }
 
-  // ── Dev fallback: mock log ─────────────────────────────────────────────────
-  console.log('📧 [EMAIL MOCK] ==========================================');
+  // ── Dev mock fallback ─────────────────────────────────────────────────────
+  console.log('📧 [EMAIL MOCK] ─────────────────────────────');
   console.log('To     :', to);
   console.log('Subject:', subject);
   const link = html.match(/href="([^"]+)"/);
   if (link) console.log('Link   :', link[1]);
-  else console.log('Body   :', text || '(html only)');
-  console.log('=========================================================');
+  else console.log('Body   :', text || '(html)');
+  console.log('─────────────────────────────────────────────');
   await new Promise((r) => setTimeout(r, 300));
   return { messageId: `mock-${Date.now()}`, mock: true };
 };
