@@ -8,6 +8,8 @@ const sendEmail = async ({ to, subject, html, text }) => {
       user: process.env.SMTP_USER || 'demo_user',
       pass: process.env.SMTP_PASS || 'demo_pass',
     },
+    connectionTimeout: 5000, // 5 seconds connection timeout
+    greetingTimeout: 5000,   // 5 seconds greeting timeout
   });
 
   const isMock = !process.env.SMTP_HOST || process.env.SMTP_HOST === 'smtp.ethereal.email';
@@ -37,7 +39,23 @@ const sendEmail = async ({ to, subject, html, text }) => {
     return { messageId: 'mock-id-' + Date.now() };
   }
 
-  return await transporter.sendMail(mailOptions);
+  try {
+    return await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error('❌ Nodemailer failed to send email. Falling back to console mock log...', error.message);
+    console.log('============= NODEMAILER MOCK EMAIL DISPATCH (FALLBACK) =============');
+    console.log('To:', mailOptions.to);
+    console.log('Subject:', mailOptions.subject);
+    console.log('HTML Body summary or Link:');
+    const linkMatch = html.match(/href="([^"]+)"/);
+    if (linkMatch) {
+      console.log('👉 LINK:', linkMatch[1]);
+    } else {
+      console.log(text || html);
+    }
+    console.log('======================================================================');
+    return { messageId: 'mock-fallback-id-' + Date.now(), fallback: true };
+  }
 };
 
 module.exports = { sendEmail };

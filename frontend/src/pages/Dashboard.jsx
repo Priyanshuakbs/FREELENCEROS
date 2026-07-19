@@ -77,156 +77,31 @@ export default function Dashboard() {
 
   const fetchDashboard = async () => {
     try {
-      const [clientsRes, projectsRes, invoicesRes, logsRes, expensesRes] = await Promise.all([
-        api.get('/clients'),
-        api.get('/projects'),
-        api.get('/invoices'),
-        api.get('/timelogs'),
-        api.get('/expenses'),
-      ])
-
-      const clients = clientsRes.data.clients || []
-      const projects = projectsRes.data.projects || []
-      const invoices = invoicesRes.data.invoices || []
-      const logs = logsRes.data.logs || []
-      const expenses = expensesRes.data.expenses || []
-
-      const paidInvoices = invoices.filter((item) => item.status === 'paid')
-      const pendingInvoices = invoices.filter((item) => item.status !== 'paid')
-      const totalEarned = paidInvoices.reduce((sum, item) => sum + Number(item.total || 0), 0)
-      const totalExpenses = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-      const totalHours = logs.reduce((sum, item) => sum + Number(item.duration || 0), 0) / 60
-
+      const { data } = await api.get('/dashboard/admin/summary')
+      
       setOverview({
-        clients: clients.length,
-        projects: projects.length,
-        paidInvoices: paidInvoices.length,
-        pendingInvoices: pendingInvoices.length,
-        totalHours,
-        totalEarned,
-        totalExpenses,
-        netProfit: totalEarned - totalExpenses,
+        clients: data.overview.clientsCount,
+        projects: data.overview.projectsCount,
+        paidInvoices: data.overview.paidInvoicesCount,
+        pendingInvoices: data.overview.pendingInvoicesCount,
+        totalHours: data.overview.totalHours,
+        totalEarned: data.overview.totalEarned,
+        totalExpenses: data.overview.totalExpenses,
+        netProfit: data.overview.netProfit,
       })
 
-      setOverdueCount(invoices.filter((item) => item.status === 'overdue').length)
-
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-      const last6Months = Array.from({ length: 6 }, (_, index) => {
-        const date = new Date()
-        date.setMonth(date.getMonth() - (5 - index))
-        const month = date.getMonth()
-        const year = date.getFullYear()
-
-        const revenue = paidInvoices
-          .filter((item) => {
-            const created = new Date(item.createdAt)
-            return created.getMonth() === month && created.getFullYear() === year
-          })
-          .reduce((sum, item) => sum + Number(item.total || 0), 0)
-
-        const spend = expenses
-          .filter((item) => {
-            const created = new Date(item.date)
-            return created.getMonth() === month && created.getFullYear() === year
-          })
-          .reduce((sum, item) => sum + Number(item.amount || 0), 0)
-
-        return {
-          month: months[month],
-          revenue,
-          expenses: spend,
-          profit: revenue - spend,
-        }
-      })
-      setCashflowData(last6Months)
-
-      const progressRows = projects
-        .map((project) => {
-          const totalTasks = project.tasks?.length || 0
-          const completedTasks = project.tasks?.filter((task) => task.completed).length || 0
-          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-          return {
-            name: project.title,
-            progress,
-            status: project.status || 'active',
-          }
-        })
-        .slice(0, 6)
-      setProjectProgressData(progressRows)
-
-      const activities = [
-        ...paidInvoices.slice(-4).map((item) => ({
-          id: `invoice-${item._id}`,
-          title: `Invoice ${item.invoiceNumber} marked paid`,
-          meta: item.client?.name || 'Client invoice',
-          time: item.updatedAt || item.createdAt,
-          kind: 'payment',
-        })),
-        ...projects.slice(-4).map((item) => ({
-          id: `project-${item._id}`,
-          title: `Project updated: ${item.title}`,
-          meta: item.status || 'active',
-          time: item.updatedAt || item.createdAt,
-          kind: 'project',
-        })),
-      ]
-        .sort((a, b) => new Date(b.time) - new Date(a.time))
-        .slice(0, 6)
-      setRecentActivity(activities)
-
-      const deadlines = projects
-        .filter((item) => item.deadline)
-        .map((item) => ({
-          id: item._id,
-          title: item.title,
-          client: item.client?.name || 'No client',
-          deadline: item.deadline,
-          status: item.status || 'active',
-        }))
-        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
-        .slice(0, 5)
-      setUpcomingDeadlines(deadlines)
-
-      const revenueByClient = {}
-      paidInvoices.forEach((invoice) => {
-        if (!invoice.client?._id) return
-        if (!revenueByClient[invoice.client._id]) {
-          revenueByClient[invoice.client._id] = {
-            id: invoice.client._id,
-            name: invoice.client.name,
-            invoices: 0,
-            revenue: 0,
-          }
-        }
-        revenueByClient[invoice.client._id].invoices += 1
-        revenueByClient[invoice.client._id].revenue += Number(invoice.total || 0)
-      })
-
-      setTopClients(
-        Object.values(revenueByClient)
-          .sort((a, b) => b.revenue - a.revenue)
-          .slice(0, 5)
-      )
-
-      const recentPayments = clients
-        .flatMap((client) =>
-          (client.payments || []).map((payment) => ({
-            id: `${client._id}-${payment._id || payment.date}`,
-            clientName: client.name,
-            amount: Number(payment.amount || 0),
-            date: payment.date,
-            note: payment.note || '',
-            screenshot: payment.screenshot || '',
-          }))
-        )
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .slice(0, 5)
-
+      setOverdueCount(data.overview.overdueCount)
+      setCashflowData(data.cashflowData || [])
+      setProjectProgressData(data.projectProgressData || [])
+      setRecentActivity(data.recentActivity || [])
+      setUpcomingDeadlines(data.upcomingDeadlines || [])
+      setTopClients(data.topClients || [])
+      
       setPaymentSummary({
-        totalReceived: clients.reduce((sum, client) => sum + Number(client.amountPaid || 0), 0),
-        totalOutstanding: clients.reduce((sum, client) => sum + Number(client.remainingAmount || 0), 0),
-        paidClients: clients.filter((client) => client.paymentStatus === 'paid').length,
-        recentPayments,
+        totalReceived: data.overview.totalEarned,
+        totalOutstanding: data.overview.outstandingRevenue,
+        paidClients: data.overview.paidInvoicesCount,
+        recentPayments: data.recentPayments || []
       })
     } catch {
       toast.error('Failed to load dashboard data')
@@ -283,6 +158,15 @@ export default function Dashboard() {
           delta={Math.round((overview.netProfit / Math.max(overview.totalEarned || 1, 1)) * 100)}
           deltaLabel="profit margin"
           onClick={() => navigate('/invoices')}
+        />
+        <MetricCard
+          label="Total Clients"
+          value={overview.clients}
+          icon={Users}
+          accent="violet"
+          delta={paymentSummary.paidClients}
+          deltaLabel="fully paid"
+          onClick={() => navigate('/clients')}
         />
         <MetricCard
           label="Active Projects"

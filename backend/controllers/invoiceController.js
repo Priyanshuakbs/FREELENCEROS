@@ -141,7 +141,15 @@ exports.downloadPDF = async (req, res) => {
 
 exports.getInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.find({ freelancer: req.user._id })
+    const showArchived = req.query.archived === 'true';
+    const filter = { freelancer: req.user._id };
+    if (showArchived) {
+      filter.isArchived = true;
+    } else {
+      filter.isArchived = { $ne: true };
+    }
+
+    const invoices = await Invoice.find(filter)
       .populate('client', 'name email')
       .populate('project', 'title')
       .sort({ createdAt: -1 });
@@ -187,8 +195,13 @@ exports.updateStatus = async (req, res) => {
 
 exports.deleteInvoice = async (req, res) => {
   try {
-    await Invoice.findOneAndDelete({ _id: req.params.id, freelancer: req.user._id });
-    res.json({ message: 'Deleted' });
+    const invoice = await Invoice.findOneAndUpdate(
+      { _id: req.params.id, freelancer: req.user._id },
+      { isArchived: true },
+      { new: true }
+    );
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+    res.json({ message: 'Invoice archived successfully (soft deleted)' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

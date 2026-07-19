@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Clock3, Copy, FileText, Link, Mail, MessageSquare, Phone, Plus, Search, Shield, Tag, Trash2, UserRound, Wallet, X, Upload } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Check, Clock3, Copy, FileText, Link, Mail, MessageSquare, Phone, Plus, Search, Shield, Tag, Trash2, UserRound, Wallet, X, Upload, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
@@ -23,6 +24,8 @@ const emptyForm = {
   totalProjectAmount: '',
   allowLogin: false,
   password: '',
+  gstNumber: '',
+  panNumber: '',
 }
 
 const emptyPaymentForm = {
@@ -37,6 +40,7 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 
 export default function Clients() {
   const [clients, setClients] = useState([])
+  const [showArchived, setShowArchived] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -52,11 +56,11 @@ export default function Clients() {
 
   useEffect(() => {
     fetchClients()
-  }, [])
+  }, [showArchived])
 
   const fetchClients = async () => {
     try {
-      const { data } = await api.get('/clients')
+      const { data } = await api.get(`/clients${showArchived ? '?archived=true' : ''}`)
       setClients(data.clients || [])
     } catch {
       toast.error('Failed to load clients')
@@ -80,10 +84,22 @@ export default function Clients() {
       notes: client.notes || '',
       tags: Array.isArray(client.tags) ? client.tags.join(', ') : '',
       totalProjectAmount: client.totalProjectAmount || '',
-      allowLogin: Boolean(client.user),
+      allowLogin: Boolean(client.allowLogin),
       password: '',
+      gstNumber: client.gstNumber || '',
+      panNumber: client.panNumber || '',
     })
     setShowModal(true)
+  }
+
+  const handleSendOTP = async (clientId) => {
+    const toastId = toast.loading('Sending verification OTP...')
+    try {
+      await api.post(`/clients/${clientId}/send-otp`)
+      toast.success('Verification OTP sent to client email!', { id: toastId })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send OTP', { id: toastId })
+    }
   }
 
   const openLedger = (client) => {
@@ -298,8 +314,14 @@ export default function Clients() {
               <p className="text-lg font-semibold text-slate-50">Client directory</p>
               <p className="text-sm text-slate-400">Search contacts, review account readiness, and jump into payment ledgers quickly.</p>
             </div>
-            <div className="w-full max-w-sm">
+            <div className="flex items-center gap-3 w-full max-w-lg">
               <SearchField value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, notes, tags..." />
+              <button
+                onClick={() => setShowArchived(!showArchived)}
+                className={`btn-secondary px-4 py-2.5 text-xs font-semibold flex-shrink-0 ${showArchived ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/30 hover:bg-indigo-600/30' : ''}`}
+              >
+                {showArchived ? 'View Active' : 'View Archived'}
+              </button>
             </div>
           </div>
 
@@ -319,7 +341,9 @@ export default function Clients() {
           ) : (
             <div className="grid gap-5 xl:grid-cols-1">
               {filteredClients.map((client) => {
-                const progress = client.totalProjectAmount > 0 ? Math.min(100, Math.round((Number(client.amountPaid || 0) / Number(client.totalProjectAmount || 1)) * 100)) : 0
+                const progress = client.totalProjectAmount > 0
+                  ? Math.min(100, Math.round((Number(client.amountPaid || 0) / Number(client.totalProjectAmount || 1)) * 100))
+                  : 0
                 return (
                   <motion.div key={client._id} whileHover={{ y: -4 }} transition={{ type: 'spring', stiffness: 260, damping: 20 }}>
                     <SurfaceCard className="h-full">
@@ -332,6 +356,20 @@ export default function Clients() {
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="truncate text-lg font-semibold text-slate-50">{client.name}</p>
                               <StatusBadge status={client.paymentStatus || 'pending'} />
+                              
+                              {client.isVerified ? (
+                                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-bold text-emerald-400">Verified</span>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="rounded-full bg-slate-500/10 border border-slate-500/20 px-2 py-0.5 text-[9px] font-bold text-slate-400">Unverified</span>
+                                  <button
+                                    onClick={() => handleSendOTP(client._id)}
+                                    className="px-2 py-0.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded text-[9px] font-bold text-indigo-400 transition"
+                                  >
+                                    Send OTP
+                                  </button>
+                                </div>
+                              )}
                             </div>
                             <p className="mt-1 truncate text-sm text-slate-400">{client.company || 'Independent client'}</p>
                             <p className="mt-2 text-xs text-slate-500">
@@ -343,6 +381,9 @@ export default function Clients() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
+                          <button onClick={() => openEdit(client)} className="btn-secondary px-4 py-2.5 text-xs">
+                            Edit
+                          </button>
                           <button onClick={() => openLedger(client)} className="btn-secondary px-4 py-2.5 text-xs">
                             <FileText size={14} /> Ledger
                           </button>
@@ -424,7 +465,10 @@ export default function Clients() {
                               <span>{progress}%</span>
                             </div>
                             <div className="h-2 rounded-full border border-white/10 bg-white/[0.03] p-[2px]">
-                              <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400" style={{ width: `${progress}%` }} />
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400"
+                                style={{ width: `${progress}%` }}
+                              />
                             </div>
                           </div>
 
@@ -450,172 +494,179 @@ export default function Clients() {
         </SurfaceCard>
       </div>
 
+      {/* ── Ledger Modal ── */}
       <AnimatePresence>
         {selectedClient && !paymentModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md"
-          >
+          createPortal(
             <motion.div
-              initial={{ y: 22, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 14, opacity: 0, scale: 0.98 }}
-              className="w-full max-w-4xl rounded-[32px] border border-white/10 bg-slate-950/92 p-6 shadow-2xl backdrop-blur-2xl"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md"
             >
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-eyebrow">Payment Ledger</p>
-                  <h2 className="mt-3 text-2xl font-semibold text-slate-50">{selectedClient.name}</h2>
-                  <p className="mt-2 text-sm text-slate-400">
-                    Total {formatCurrency(selectedClient.totalProjectAmount)} | Paid {formatCurrency(selectedClient.amountPaid)} | Remaining {formatCurrency(selectedClient.remainingAmount)}
-                  </p>
+              <motion.div
+                initial={{ y: 22, opacity: 0, scale: 0.98 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 14, opacity: 0, scale: 0.98 }}
+                className="w-full max-w-4xl rounded-[32px] border border-white/10 bg-slate-950/92 p-6 shadow-2xl backdrop-blur-2xl max-h-[90vh] overflow-y-auto"
+              >
+                <div className="mb-6 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="section-eyebrow">Payment Ledger</p>
+                    <h2 className="mt-3 text-2xl font-semibold text-slate-50">{selectedClient.name}</h2>
+                    <p className="mt-2 text-sm text-slate-400">
+                      Total {formatCurrency(selectedClient.totalProjectAmount)} · Paid {formatCurrency(selectedClient.amountPaid)} · Remaining {formatCurrency(selectedClient.remainingAmount)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setSelectedClient(null)} className="btn-secondary px-3 py-2">
+                      <X size={16} />
+                    </button>
+                    <button onClick={() => openPayment(selectedClient)} className="btn-primary">
+                      <Plus size={16} /> Record Payment
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setSelectedClient(null)} className="btn-secondary px-3 py-2">
-                    <X size={16} />
-                  </button>
-                  <button onClick={() => openPayment(selectedClient)} className="btn-primary">
-                    <Plus size={16} /> Record Payment
-                  </button>
-                </div>
-              </div>
 
-              <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-                <div className="space-y-4">
+                <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+                  <div className="space-y-4">
+                    <SurfaceCard className="bg-white/[0.03]">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Email</p>
+                          <p className="mt-1 text-sm text-slate-100">{selectedClient.email}</p>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Payment Status</p>
+                          <StatusBadge status={selectedClient.paymentStatus || 'pending'} className="mt-1" />
+                        </div>
+                      </div>
+                      {selectedClient.address ? (
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Address</p>
+                          <p className="mt-1 text-sm text-slate-300">{selectedClient.address}</p>
+                        </div>
+                      ) : null}
+                      {selectedClient.notes ? (
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Client Notes</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-300">{selectedClient.notes}</p>
+                        </div>
+                      ) : null}
+                    </SurfaceCard>
+
+                    <SurfaceCard className="bg-white/[0.03]">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-lg font-semibold text-slate-50">Timeline</p>
+                          <p className="text-sm text-slate-400">Payment receipts and proofs</p>
+                        </div>
+                        <FileText size={18} className="text-slate-500" />
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {(selectedClient.payments || []).length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-400">
+                            No payments recorded yet.
+                          </div>
+                        ) : (
+                          selectedClient.payments.map((payment, index) => (
+                            <div key={`${payment._id || index}`} className="surface-card-compact">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-100">{formatCurrency(payment.amount)}</p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {new Date(payment.date).toLocaleDateString('en-IN')}
+                                    {payment.invoiceNumber ? ` · Invoice ${payment.invoiceNumber}` : ''}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] uppercase tracking-[0.24em] text-slate-500">#{selectedClient.payments.length - index}</span>
+                              </div>
+                              {payment.note ? <p className="mt-3 text-sm leading-6 text-slate-300">{payment.note}</p> : null}
+                              {payment.screenshot ? (
+                                <a
+                                  href={`${backendOrigin}${payment.screenshot}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.06]"
+                                >
+                                  <Upload size={12} /> Open screenshot
+                                </a>
+                              ) : null}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </SurfaceCard>
+                  </div>
+
                   <SurfaceCard className="bg-white/[0.03]">
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-lg font-semibold text-slate-50">Payment summary</p>
+                        <p className="text-sm text-slate-400">Client ledger overview and collection ratios.</p>
+                      </div>
+                      <FileText size={18} className="text-slate-500" />
+                    </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Email</p>
-                        <p className="mt-1 text-sm text-slate-100">{selectedClient.email}</p>
+                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Total Project Amount</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-50">{formatCurrency(selectedClient.totalProjectAmount)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Amount Paid</p>
+                        <p className="mt-1 text-lg font-semibold text-emerald-300">{formatCurrency(selectedClient.amountPaid)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Remaining Amount</p>
+                        <p className="mt-1 text-lg font-semibold text-rose-300">{formatCurrency(selectedClient.remainingAmount)}</p>
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
                         <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Payment Status</p>
                         <StatusBadge status={selectedClient.paymentStatus || 'pending'} className="mt-1" />
                       </div>
                     </div>
-                    {selectedClient.address ? (
-                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Address</p>
-                        <p className="mt-1 text-sm text-slate-300">{selectedClient.address}</p>
-                      </div>
-                    ) : null}
-                    {selectedClient.notes ? (
-                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Client Notes</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-300">{selectedClient.notes}</p>
-                      </div>
-                    ) : null}
-                  </SurfaceCard>
 
-                  <SurfaceCard className="bg-white/[0.03]">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-lg font-semibold text-slate-50">Timeline</p>
-                        <p className="text-sm text-slate-400">Payment receipts and proofs</p>
-                      </div>
-                      <FileText size={18} className="text-slate-500" />
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {(selectedClient.payments || []).length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-400">
-                          No payments recorded yet.
+                    <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-100">Collection progress</p>
+                          <p className="text-xs text-slate-500">Paid vs total project value</p>
                         </div>
-                      ) : (
-                        selectedClient.payments.map((payment, index) => (
-                          <div key={`${payment._id || index}`} className="surface-card-compact">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-medium text-slate-100">{formatCurrency(payment.amount)}</p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {new Date(payment.date).toLocaleDateString('en-IN')}
-                                  {payment.invoiceNumber ? ` · Invoice ${payment.invoiceNumber}` : ''}
-                                </p>
-                              </div>
-                              <span className="text-[10px] uppercase tracking-[0.24em] text-slate-500">#{selectedClient.payments.length - index}</span>
-                            </div>
-                            {payment.note ? <p className="mt-3 text-sm leading-6 text-slate-300">{payment.note}</p> : null}
-                            {payment.screenshot ? (
-                              <a
-                                href={`${backendOrigin}${payment.screenshot}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.06]"
-                              >
-                                <Upload size={12} /> Open screenshot
-                              </a>
-                            ) : null}
-                          </div>
-                        ))
-                      )}
+                      </div>
+                      <div className="mt-4 h-2 rounded-full border border-white/10 bg-white/[0.03] p-[2px]">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400"
+                          style={{
+                            width: `${selectedClient.totalProjectAmount > 0
+                              ? Math.min(100, Math.round((Number(selectedClient.amountPaid || 0) / Number(selectedClient.totalProjectAmount || 1)) * 100))
+                              : 0}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="flex items-center gap-3">
+                        <MessageSquare size={16} className="text-slate-400" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-100">Payment notes</p>
+                          <p className="text-xs text-slate-500">Use notes to record context for each payment entry.</p>
+                        </div>
+                      </div>
                     </div>
                   </SurfaceCard>
                 </div>
-
-                <SurfaceCard className="bg-white/[0.03]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-lg font-semibold text-slate-50">Payment summary</p>
-                      <p className="text-sm text-slate-400">Client ledger overview and collection ratios.</p>
-                    </div>
-                    <FileText size={18} className="text-slate-500" />
-                  </div>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Total Project Amount</p>
-                      <p className="mt-1 text-lg font-semibold text-slate-50">{formatCurrency(selectedClient.totalProjectAmount)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Amount Paid</p>
-                      <p className="mt-1 text-lg font-semibold text-emerald-300">{formatCurrency(selectedClient.amountPaid)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Remaining Amount</p>
-                      <p className="mt-1 text-lg font-semibold text-rose-300">{formatCurrency(selectedClient.remainingAmount)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Payment Status</p>
-                      <StatusBadge status={selectedClient.paymentStatus || 'pending'} className="mt-1" />
-                    </div>
-                  </div>
-
-                  <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20" />
-                      <div>
-                        <p className="text-sm font-medium text-slate-100">Collection progress</p>
-                        <p className="text-xs text-slate-500">Paid vs total project value</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 h-2 rounded-full border border-white/10 bg-white/[0.03] p-[2px]">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400"
-                        style={{
-                          width: `${selectedClient.totalProjectAmount > 0 ? Math.min(100, Math.round((Number(selectedClient.amountPaid || 0) / Number(selectedClient.totalProjectAmount || 1)) * 100)) : 0}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                    <div className="flex items-center gap-3">
-                      <MessageSquare size={16} className="text-slate-400" />
-                      <div>
-                        <p className="text-sm font-medium text-slate-100">Payment notes</p>
-                        <p className="text-xs text-slate-500">Use notes to record context for each payment entry.</p>
-                      </div>
-                    </div>
-                  </div>
-                </SurfaceCard>
-              </div>
-            </motion.div>
-          </motion.div>
+              </motion.div>
+            </motion.div>,
+            document.body
+          )
         )}
       </AnimatePresence>
 
+      {/* ── Add / Edit Client Modal ── */}
       <AnimatePresence>
-        {showModal && (
+        {showModal && createPortal(
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -626,7 +677,7 @@ export default function Clients() {
               initial={{ y: 22, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 14, opacity: 0, scale: 0.98 }}
-              className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-slate-950/92 p-6 shadow-2xl backdrop-blur-2xl"
+              className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-slate-950/92 p-6 shadow-2xl backdrop-blur-2xl max-h-[90vh] overflow-y-auto"
             >
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
@@ -703,6 +754,27 @@ export default function Clients() {
                   </div>
                 </div>
 
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-300">GST Number</label>
+                    <input
+                      value={form.gstNumber}
+                      onChange={(event) => setForm({ ...form, gstNumber: event.target.value })}
+                      placeholder="Optional GSTIN"
+                      className="input-shell w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-300">PAN Number</label>
+                    <input
+                      value={form.panNumber}
+                      onChange={(event) => setForm({ ...form, panNumber: event.target.value })}
+                      placeholder="Optional PAN"
+                      className="input-shell w-full"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="mb-2 block text-sm text-slate-300">Address</label>
                   <textarea
@@ -725,25 +797,33 @@ export default function Clients() {
                 </div>
 
                 <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                  {editing && !editing.isVerified ? (
+                    <div className="text-xs text-amber-400 font-semibold mb-2 flex items-center gap-1.5">
+                      <AlertCircle size={14} /> Client email must be verified via OTP before login access can be enabled.
+                    </div>
+                  ) : null}
                   <label className="flex items-center gap-3 text-sm text-slate-200">
                     <input
                       type="checkbox"
                       checked={form.allowLogin}
+                      disabled={editing && !editing.isVerified}
                       onChange={(event) => setForm({ ...form, allowLogin: event.target.checked })}
-                      className="h-4 w-4 rounded border-white/10 bg-transparent text-indigo-500"
+                      className="h-4 w-4 rounded border-white/10 bg-transparent text-indigo-500 disabled:opacity-50"
                     />
                     Grant portal login access to this client
                   </label>
 
                   {form.allowLogin ? (
                     <div className="mt-4">
-                      <label className="mb-2 block text-sm text-slate-300">Password {editing ? '(optional)' : ''}</label>
+                      <label className="mb-2 block text-sm text-slate-300">
+                        Password {editing && editing.allowLogin ? '(optional)' : '(required)'}
+                      </label>
                       <input
                         type="password"
                         value={form.password}
                         onChange={(event) => setForm({ ...form, password: event.target.value })}
-                        required={!editing}
-                        placeholder={editing ? 'Leave blank to keep current password' : 'Minimum 6 characters'}
+                        required={!editing || (editing && !editing.allowLogin)}
+                        placeholder={editing && editing.allowLogin ? 'Leave blank to keep current password' : 'Minimum 6 characters'}
                         className="input-shell w-full"
                       />
                     </div>
@@ -760,12 +840,14 @@ export default function Clients() {
                 </div>
               </form>
             </motion.div>
-          </motion.div>
+          </motion.div>,
+          document.body
         )}
       </AnimatePresence>
 
+      {/* ── Record Payment Modal ── */}
       <AnimatePresence>
-        {selectedClient && paymentModal && (
+        {selectedClient && paymentModal && createPortal(
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -859,7 +941,8 @@ export default function Clients() {
                 </div>
               </form>
             </motion.div>
-          </motion.div>
+          </motion.div>,
+          document.body
         )}
       </AnimatePresence>
     </div>

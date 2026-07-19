@@ -20,6 +20,12 @@ const emptyForm = {
   github: '',
   portfolio: '',
   bio: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
+  ifscCode: '',
+  upiId: '',
+  gstNumber: '',
+  businessRegistrationNumber: '',
 }
 
 const emptyPassword = {
@@ -52,6 +58,12 @@ export default function Profile() {
       github: user.github || '',
       portfolio: user.portfolio || '',
       bio: user.bio || '',
+      bankAccountName: user.bankAccountName || '',
+      bankAccountNumber: user.bankAccountNumber || '',
+      ifscCode: user.ifscCode || '',
+      upiId: user.upiId || '',
+      gstNumber: user.gstNumber || '',
+      businessRegistrationNumber: user.businessRegistrationNumber || '',
     })
     setAvatarPreview(user.avatar ? `${backendOrigin}${user.avatar}` : '')
   }, [user])
@@ -200,12 +212,46 @@ export default function Profile() {
             <div>
               <label className={labelClasses}>Bio / About</label>
               <textarea
-                rows={5}
+                rows={4}
                 value={form.bio}
                 onChange={(e) => setForm({ ...form, bio: e.target.value })}
                 className="input-shell w-full resize-none"
                 placeholder="Short professional bio, service focus, and what clients should know."
               />
+            </div>
+
+            {/* Business & Bank Details */}
+            <div className="pt-5 border-t border-white/10 space-y-4">
+              <div className="flex items-center gap-2">
+                <BriefcaseBusiness size={18} className="text-indigo-400" />
+                <h3 className="text-base font-bold text-slate-100">Business & Billing Details</h3>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className={labelClasses}>Bank Account Name</label>
+                  <input value={form.bankAccountName} onChange={(e) => setForm({ ...form, bankAccountName: e.target.value })} className="input-shell w-full" placeholder="e.g. John Doe Studios" />
+                </div>
+                <div>
+                  <label className={labelClasses}>Bank Account Number</label>
+                  <input value={form.bankAccountNumber} onChange={(e) => setForm({ ...form, bankAccountNumber: e.target.value })} className="input-shell w-full" placeholder="e.g. 1234567890" />
+                </div>
+                <div>
+                  <label className={labelClasses}>IFSC Code</label>
+                  <input value={form.ifscCode} onChange={(e) => setForm({ ...form, ifscCode: e.target.value })} className="input-shell w-full" placeholder="e.g. HDFC0000123" />
+                </div>
+                <div>
+                  <label className={labelClasses}>UPI ID</label>
+                  <input value={form.upiId} onChange={(e) => setForm({ ...form, upiId: e.target.value })} className="input-shell w-full" placeholder="e.g. john@okaxis" />
+                </div>
+                <div>
+                  <label className={labelClasses}>GST Number</label>
+                  <input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} className="input-shell w-full" placeholder="e.g. 27AAAAA1111A1Z1" />
+                </div>
+                <div>
+                  <label className={labelClasses}>Business Reg Number</label>
+                  <input value={form.businessRegistrationNumber} onChange={(e) => setForm({ ...form, businessRegistrationNumber: e.target.value })} className="input-shell w-full" placeholder="e.g. U12345MH2021PTC123456" />
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3">
@@ -223,6 +269,12 @@ export default function Profile() {
                     github: user?.github || '',
                     portfolio: user?.portfolio || '',
                     bio: user?.bio || '',
+                    bankAccountName: user?.bankAccountName || '',
+                    bankAccountNumber: user?.bankAccountNumber || '',
+                    ifscCode: user?.ifscCode || '',
+                    upiId: user?.upiId || '',
+                    gstNumber: user?.gstNumber || '',
+                    businessRegistrationNumber: user?.businessRegistrationNumber || '',
                   })
                   setAvatar(null)
                 }}

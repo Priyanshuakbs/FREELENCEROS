@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle, Download, Eye, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
@@ -272,16 +273,17 @@ export default function Invoices() {
         </SurfaceCard>
       </div>
 
-      {selected ? (
+      {selected ? createPortal(
         <InvoiceModal
           invoice={selected}
           onClose={() => setSelected(null)}
           onMarkPaid={() => handleStatusUpdate(selected._id, 'paid')}
           onDelete={() => handleDelete(selected._id)}
-        />
+        />,
+        document.body
       ) : null}
 
-      {aiModal ? (
+      {aiModal ? createPortal(
         <AiModal
           form={aiForm}
           setForm={setAiForm}
@@ -289,10 +291,11 @@ export default function Invoices() {
           loading={aiLoading}
           onClose={() => setAiModal(false)}
           onGenerate={handleAIGenerate}
-        />
+        />,
+        document.body
       ) : null}
 
-      {showModal ? (
+      {showModal ? createPortal(
         <InvoiceFormModal
           form={form}
           clients={clients}
@@ -306,7 +309,8 @@ export default function Invoices() {
           onAddItem={addItem}
           onRemoveItem={removeItem}
           onSubmit={handleSubmit}
-        />
+        />,
+        document.body
       ) : null}
     </AnimatedPage>
   )

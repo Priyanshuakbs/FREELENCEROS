@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  PhoneCall,
   Plus,
   Search,
   Sun,
@@ -275,6 +276,7 @@ export default function Layout({ children }) {
                           <p className="text-xs" style={{ color: 'var(--text-subtle)' }}>Jump to common freelancer flows</p>
                         </div>
                         <div className="p-2">
+                          <QuickActionItem icon={PhoneCall} label="New lead" onClick={() => navigate('/leads')} />
                           <QuickActionItem icon={Users} label="Add client" onClick={() => navigate('/clients')} />
                           <QuickActionItem icon={FolderKanban} label="New project" onClick={() => navigate('/projects')} />
                           <QuickActionItem icon={FileText} label="New invoice" onClick={() => navigate('/invoices')} />

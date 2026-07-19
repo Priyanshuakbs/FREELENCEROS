@@ -28,23 +28,29 @@ const findProjectForTaskAccess = async (projectId, user) => {
 exports.getProjects = async (req, res) => {
   try {
     let query = {};
+    const showArchived = req.query.archived === 'true';
+    if (showArchived) {
+      query.isArchived = true;
+    } else {
+      query.isArchived = { $ne: true };
+    }
+
     const role = req.user.role || 'admin';
     if (role === 'admin') {
-      query = {
-        $or: [
-          { freelancer: req.user._id },
-          { collaborators: req.user._id }
-        ]
-      };
+      // Keep existing $or logic merged with isArchived filter
+      const orConditions = [
+        { freelancer: req.user._id },
+        { collaborators: req.user._id }
+      ];
+      query = { ...query, $and: [{ $or: orConditions }] };
     } else {
       const clientDocs = await Client.find({ user: req.user._id });
       const clientIds = clientDocs.map(c => c._id);
-      query = {
-        $or: [
-          { client: { $in: clientIds } },
-          { collaborators: req.user._id }
-        ]
-      };
+      const orConditions = [
+        { client: { $in: clientIds } },
+        { collaborators: req.user._id }
+      ];
+      query = { ...query, $and: [{ $or: orConditions }] };
     }
 
     const projects = await Project.find(query)
@@ -92,12 +98,13 @@ exports.updateProject = async (req, res) => {
 
 exports.deleteProject = async (req, res) => {
   try {
-    const project = await Project.findOneAndDelete({
-      _id: req.params.id,
-      freelancer: req.user._id,
-    });
+    const project = await Project.findOneAndUpdate(
+      { _id: req.params.id, freelancer: req.user._id },
+      { isArchived: true },
+      { new: true }
+    );
     if (!project) return res.status(404).json({ message: 'Project not found' });
-    res.json({ message: 'Project deleted' });
+    res.json({ message: 'Project archived successfully (soft deleted)' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

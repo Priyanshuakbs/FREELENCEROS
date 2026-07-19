@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus, Trash2, X, CheckSquare, Square, Share2, FolderOpen, Paperclip, Download, UploadCloud } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
@@ -849,8 +850,8 @@ export default function Projects() {
       </div>
 
       {/* Creation Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+      {showModal && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-200">
           <div className="bg-[#111118]/90 border border-white/[0.06] backdrop-blur-xl rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl relative animate-in slide-in-from-bottom-6 duration-300 max-h-[95vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <div>
@@ -945,7 +946,8 @@ export default function Projects() {
               </button>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </AnimatedPage>
   )

@@ -15,8 +15,17 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+  const clientAuth = JSON.parse(localStorage.getItem('client-auth-storage') || '{}')
+  
   const token = auth?.state?.token
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  const clientToken = clientAuth?.state?.token
+  
+  // Choose token depending on request route or available session
+  if (clientToken && (config.url.includes('/client') || !token)) {
+    config.headers.Authorization = `Bearer ${clientToken}`
+  } else if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
   return config
 })
 
@@ -24,10 +33,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear storage
       localStorage.removeItem('auth-storage')
-      // Redirect
-      window.location.href = '/login'
+      localStorage.removeItem('client-auth-storage')
+      
+      if (window.location.pathname.startsWith('/client')) {
+        window.location.href = '/client-login'
+      } else {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }

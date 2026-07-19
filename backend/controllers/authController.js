@@ -1,9 +1,10 @@
 const User = require('../models/User');
+const Client = require('../models/Client');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendEmail } = require('../utils/emailUtil');
 
-const generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id, role = 'user') => jwt.sign({ id, role }, process.env.JWT_SECRET, {
   expiresIn: process.env.JWT_EXPIRE,
 });
 
@@ -352,6 +353,168 @@ exports.resetPassword = async (req, res) => {
     res.json({ message: 'Password reset successful! You can now log in.' });
   } catch (err) {
     console.error('Reset password error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.clientLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    const client = await Client.findOne({ email: email.toLowerCase(), isArchived: { $ne: true } });
+    if (!client) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    if (!client.allowLogin) {
+      return res.status(403).json({ message: 'Login is not enabled for this client account.' });
+    }
+
+    const isMatch = await client.matchPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    res.json({
+      token: generateToken(client._id, 'client'),
+      client: {
+        id: client._id,
+        name: client.name,
+        email: client.email,
+        company: client.company,
+        role: 'client',
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getClientMe = async (req, res) => {
+  try {
+    res.json({
+      client: {
+        id: req.client._id,
+        name: req.client.name,
+        email: req.client.email,
+        company: req.client.company,
+        role: 'client',
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.clientForgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email address is required' });
+
+    const client = await Client.findOne({ email: email.toLowerCase(), isArchived: { $ne: true } });
+    if (!client) {
+      return res.status(404).json({ message: 'No client registered with this email address.' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    client.resetPasswordToken = resetToken;
+    client.resetPasswordExpire = Date.now() + 3600000; // 1 hour
+    await client.save();
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetLink = `${frontendUrl}/client-reset-password/${resetToken}`;
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; padding: 25px; color: #333; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #fffaf0;">
+        <h2 style="color: #f59e0b; border-bottom: 2px solid #fef3c7; padding-bottom: 10px; margin-top: 0;">Reset Your Client Password 🔒</h2>
+        <p>Hi <strong>${client.name}</strong>,</p>
+        <p>You are receiving this email because a password reset request was made for your FreelanceOS client account.</p>
+        <p>Please click the button below to set a new password:</p>
+        <div style="margin: 25px 0; text-align: center;">
+          <a href="${resetLink}" style="background-color: #f59e0b; color: white; padding: 12px 30px; font-weight: bold; text-decoration: none; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.4); display: inline-block;">Reset Password</a>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">If the button above does not work, copy and paste this URL into your browser:</p>
+        <p style="font-size: 12px; background-color: #f1f5f9; padding: 10px; border-radius: 6px; word-break: break-all; font-family: monospace;">${resetLink}</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
+        <p style="font-size: 11px; color: #94a3b8; text-align: center;">This link is valid for 1 hour. If you did not request a password reset, please ignore this email.</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: email,
+      subject: '🔒 Reset Client Password Request - FreelanceOS',
+      html: htmlContent,
+      text: `Reset your FreelanceOS client password here: ${resetLink}`
+    });
+
+    res.json({ message: 'Password reset link sent to your email.' });
+  } catch (err) {
+    console.error('Client Forgot password error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.clientResetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long.' });
+    }
+
+    const client = await Client.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!client) {
+      return res.status(400).json({ message: 'Password reset token is invalid or has expired.' });
+    }
+
+    client.password = password;
+    client.resetPasswordToken = '';
+    client.resetPasswordExpire = undefined;
+    await client.save();
+
+    res.json({ message: 'Password reset successful! You can now log in.' });
+  } catch (err) {
+    console.error('Client Reset password error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.clientVerifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ message: 'Email and OTP are required.' });
+    }
+
+    const client = await Client.findOne({ email: email.toLowerCase(), isArchived: { $ne: true } });
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found.' });
+    }
+
+    if (client.isVerified) {
+      return res.status(400).json({ message: 'Email address is already verified.' });
+    }
+
+    if (client.verificationOTP !== otp || client.verificationOTPExpires < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired verification OTP.' });
+    }
+
+    client.isVerified = true;
+    client.verificationOTP = '';
+    client.verificationOTPExpires = undefined;
+    await client.save();
+
+    res.json({ message: 'Email verified successfully!' });
+  } catch (err) {
+    console.error('Client Verification error:', err.message);
     res.status(500).json({ message: err.message });
   }
 };

@@ -91,8 +91,12 @@ app.use(express.json());
 app.use(mongoSanitize());
 
 // Routes
+// app.use('/api/leads', require('./routes/leads'))
+app.use('/api/leads', require('./routes/leadRoutes'));
 app.use('/api/clients', require('./routes/clients'));
 app.use('/api/projects', require('./routes/projects'));
+app.use('/api/projects', require('./routes/prd'));
+app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/timelogs', require('./routes/timeLogs'));
 app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/expenses', require('./routes/expenses'));

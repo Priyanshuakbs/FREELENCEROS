@@ -26,6 +26,13 @@ const userSchema = new mongoose.Schema({
   monthlyGoal: { type: Number, default: 100000 },
   onboardingToken: { type: String, default: '' },
   onboardingTokenExpires: { type: Date },
+  // Freelancer bank & tax details
+  bankAccountName: { type: String, default: '' },
+  bankAccountNumber: { type: String, default: '' },
+  ifscCode: { type: String, default: '' },
+  upiId: { type: String, default: '' },
+  gstNumber: { type: String, default: '' },
+  businessRegistrationNumber: { type: String, default: '' },
 }, { timestamps: true });
 
 userSchema.pre('save', async function() {

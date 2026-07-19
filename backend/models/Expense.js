@@ -10,6 +10,7 @@ const expenseSchema = new mongoose.Schema({
   },
   date: { type: Date, default: Date.now },
   notes: { type: String, default: '' },
+  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
   freelancer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });
 

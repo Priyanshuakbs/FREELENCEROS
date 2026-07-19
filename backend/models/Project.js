@@ -19,7 +19,7 @@ const projectSchema = new mongoose.Schema({
   budget: { type: Number, default: 0 },
   deadline: { type: Date },
   tasks: [taskSchema],
-  shareToken: { type: String, default: null,  sparse: true },
+  shareToken: { type: String, default: null, sparse: true },
   collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   files: [{
     name: { type: String, required: true },
@@ -28,6 +28,7 @@ const projectSchema = new mongoose.Schema({
     size: { type: Number },
     createdAt: { type: Date, default: Date.now },
   }],
+  isArchived: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Project', projectSchema);

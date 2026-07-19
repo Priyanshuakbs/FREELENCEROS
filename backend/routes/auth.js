@@ -13,9 +13,15 @@ const {
   resendVerification,
   forgotPassword,
   resetPassword,
+  clientLogin,
+  getClientMe,
+  clientForgotPassword,
+  clientResetPassword,
+  clientVerifyOTP,
 } = require('../controllers/authController');
-const { protect } = require('../middleware/auth');
+const { protect, clientProtect } = require('../middleware/auth');
 
+// Freelancer/User routes
 router.post('/register', register);
 router.post('/login', login);
 router.get('/me', protect, getMe);
@@ -26,5 +32,12 @@ router.post('/verify-otp', protect, verifyOTP);
 router.post('/resend-verify', protect, resendVerification);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password/:token', resetPassword);
+
+// Client auth routes
+router.post('/client/login', clientLogin);
+router.get('/client/me', clientProtect, getClientMe);
+router.post('/client/forgot-password', clientForgotPassword);
+router.post('/client/reset-password/:token', clientResetPassword);
+router.post('/client/verify-otp', clientVerifyOTP);
 
 module.exports = router;

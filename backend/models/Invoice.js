@@ -28,6 +28,7 @@ const invoiceSchema = new mongoose.Schema({
   razorpayOrderId: { type: String },
   razorpayPaymentId: { type: String },
   paymentLink: { type: String },
+  isArchived: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Invoice', invoiceSchema);
