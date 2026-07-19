@@ -57,13 +57,15 @@ const sendEmail = async ({ to, subject, html, text }) => {
   // ╚══════════════════════════════════════════════════════════════════════════╝
   if (process.env.BREVO_API_KEY) {
     try {
-      const senderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'noreply@freelanceos.app';
-      const senderName = process.env.BREVO_SENDER_NAME || 'FreelanceOS';
+      // .trim() removes invisible whitespace/newlines that sneak in during copy-paste
+      const brevoKey = process.env.BREVO_API_KEY.trim();
+      const senderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'noreply@freelanceos.app').trim();
+      const senderName = (process.env.BREVO_SENDER_NAME || 'FreelanceOS').trim();
 
       const result = await httpsPost(
         'api.brevo.com',
         '/v3/smtp/email',
-        { 'api-key': process.env.BREVO_API_KEY },
+        { 'api-key': brevoKey },
         {
           sender: { name: senderName, email: senderEmail },
           to: [{ email: to }],
