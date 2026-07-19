@@ -130,14 +130,13 @@ app.get('/api/test-email', async (req, res) => {
       to,
       subject: '✅ FreelanceOS Live Email Test',
       html: `<div style="font-family:Arial;padding:20px;background:#ecfdf5;border-radius:12px;">
-        <h2 style="color:#059669;">✅ Email delivery confirmed!</h2>
+        <h2 style="color:#059669;">✅ Email delivery test!</h2>
         <p>Sent at: ${new Date().toISOString()}</p>
-        <p>To: ${to}</p>
-        <p>Method: ${result?.method || 'unknown'}</p>
+        <p>Recipient: ${to}</p>
       </div>`,
       text: 'FreelanceOS live email test successful!',
     });
-    res.json({ success: true, to, result, envStatus });
+    res.json({ success: true, to, method: result?.method || 'unknown', result, envStatus });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message, envStatus });
   }
