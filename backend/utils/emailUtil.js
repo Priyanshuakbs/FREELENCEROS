@@ -1,33 +1,72 @@
 const nodemailer = require('nodemailer');
+const https = require('https');
+
+const sendResendEmail = (apiKey, from, to, subject, html, text) => {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({
+      from,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+      text: text || '',
+    });
+
+    const options = {
+      hostname: 'api.resend.com',
+      port: 443,
+      path: '/emails',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(body);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(parsed);
+          } else {
+            reject(new Error(parsed.message || body));
+          }
+        } catch (e) {
+          reject(new Error(`Failed to parse response: ${body}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.write(data);
+    req.end();
+  });
+};
 
 const sendEmail = async ({ to, subject, html, text }) => {
+  let resendError = null;
+  let smtpError = null;
+
   // 1. Check if Resend is configured (Recommended for production on Render Free tier)
   if (process.env.RESEND_API_KEY) {
     try {
       const fromEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: `FreelanceOS <${fromEmail}>`,
-          to: Array.isArray(to) ? to : [to],
-          subject,
-          html,
-          text: text || '',
-        }),
-      });
+      const fromFormatted = `FreelanceOS <${fromEmail}>`;
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || JSON.stringify(data));
-      }
-
+      const data = await sendResendEmail(process.env.RESEND_API_KEY, fromFormatted, to, subject, html, text);
       console.log('✅ Email sent successfully via Resend API. ID:', data.id);
       return { messageId: data.id };
     } catch (error) {
+      resendError = error;
       console.error('❌ Resend API failed. Falling back to SMTP/mock...', error.message);
     }
   }
@@ -57,11 +96,22 @@ const sendEmail = async ({ to, subject, html, text }) => {
       console.log('✅ Email sent successfully via SMTP. ID:', info.messageId);
       return info;
     } catch (error) {
+      smtpError = error;
       console.error('❌ SMTP connection failed. Falling back to mock console logs...', error.message);
     }
   }
 
-  // 3. Mock Console log (Fallback if no keys configured or both failed)
+  // 3. If in production and configured methods failed, throw the error
+  if (process.env.NODE_ENV === 'production') {
+    const errMsg = [];
+    if (process.env.RESEND_API_KEY) errMsg.push(`Resend: ${resendError?.message}`);
+    if (process.env.SMTP_HOST) errMsg.push(`SMTP: ${smtpError?.message}`);
+    if (errMsg.length > 0) {
+      throw new Error(`Email dispatch failed (${errMsg.join(' | ')})`);
+    }
+  }
+
+  // 4. Mock Console log (Fallback if no keys configured or both failed in dev)
   console.log('============= NODEMAILER MOCK EMAIL DISPATCH =============');
   console.log('To:', to);
   console.log('Subject:', subject);
