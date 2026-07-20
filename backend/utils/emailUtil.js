@@ -54,6 +54,7 @@ const hasGmailApiConfig = () =>
   isNonEmpty(process.env.GMAIL_CLIENT_SECRET) &&
   isNonEmpty(process.env.GMAIL_REFRESH_TOKEN) &&
   isNonEmpty(process.env.GMAIL_SENDER_EMAIL);
+const getExplicitProvider = () => (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
 const isProduction = () => process.env.NODE_ENV === 'production';
 
 const isEmailProviderConfigured = () =>
@@ -70,6 +71,44 @@ const getSmtpConfig = () => {
     port: Number.isFinite(port) ? port : 587,
     secure,
   };
+};
+
+const sendViaSmtp = async ({ to, subject, html, text }) => {
+  const smtpConfig = getSmtpConfig();
+  const transporter = nodemailer.createTransport({
+    host: smtpConfig.host,
+    port: smtpConfig.port,
+    secure: smtpConfig.secure,
+    requireTLS: !smtpConfig.secure,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
+
+  const info = await transporter.sendMail({
+    from: `"FreelanceOS" <${process.env.SMTP_USER}>`,
+    to,
+    subject,
+    text: text || '',
+    html,
+  });
+
+  console.log('✅ [EMAIL] Sent via Gmail SMTP. ID:', info.messageId, '→ To:', to);
+  return { messageId: info.messageId, method: 'gmail-smtp' };
+};
+
+const getProviderOrder = () => {
+  const explicit = getExplicitProvider();
+  // Brevo first in both dev and prod — uses HTTPS/443, never blocked, free tier sends to any email
+  // Gmail API second (needs OAuth setup), Resend third, SMTP last (port 587 often blocked on hosts)
+  const defaultOrder = ['brevo', 'gmail-api', 'resend', 'smtp'];
+
+  if (explicit && defaultOrder.includes(explicit)) {
+    return [explicit, ...defaultOrder.filter((provider) => provider !== explicit)];
+  }
+
+  return defaultOrder;
 };
 
 const encodeBase64Url = (input) =>
@@ -183,25 +222,26 @@ const sendViaGmailApi = async ({ to, subject, html, text }) => {
 const sendEmail = async ({ to, subject, html, text }) => {
   const errors = [];
   const providerConfigured = isEmailProviderConfigured();
+  const providerOrder = getProviderOrder();
 
-  if (isProduction()) {
-    if (hasGmailApiConfig()) {
+  for (const provider of providerOrder) {
+    if (provider === 'gmail-api' && hasGmailApiConfig()) {
       try {
         return await sendViaGmailApi({ to, subject, html, text });
       } catch (err) {
         errors.push(`Gmail API: ${err.message}`);
-        console.error('❌ [EMAIL] Gmail API failed in production:', err.message);
+        console.error('❌ [EMAIL] Gmail API failed:', err.message);
       }
     }
 
-    if (hasBrevoConfig()) {
+    if (provider === 'brevo' && hasBrevoConfig()) {
       try {
         const brevoKey = process.env.BREVO_API_KEY.trim();
         const senderEmail = (process.env.BREVO_SENDER_EMAIL || '').trim();
         const senderName = (process.env.BREVO_SENDER_NAME || 'FreelanceOS').trim();
 
         if (!senderEmail) {
-          throw new Error('BREVO_SENDER_EMAIL is required in production.');
+          throw new Error('BREVO_SENDER_EMAIL is required.');
         }
 
         const result = await httpsPost(
@@ -221,106 +261,39 @@ const sendEmail = async ({ to, subject, html, text }) => {
         return { messageId: result.messageId, method: 'brevo' };
       } catch (err) {
         errors.push(`Brevo: ${err.message}`);
-        console.error('❌ [EMAIL] Brevo failed in production:', err.message);
+        console.error('❌ [EMAIL] Brevo failed:', err.message);
+      }
+    }
+    if (provider === 'resend' && hasResendConfig()) {
+      try {
+        const fromEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
+        const result = await httpsPost(
+          'api.resend.com',
+          '/emails',
+          { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+          {
+            from: `FreelanceOS <${fromEmail}>`,
+            to: Array.isArray(to) ? to : [to],
+            subject,
+            html,
+            text: text || '',
+          }
+        );
+        console.log('✅ [EMAIL] Sent via Resend. ID:', result.id, '→ To:', to);
+        return { messageId: result.id, method: 'resend' };
+      } catch (err) {
+        errors.push(`Resend: ${err.message}`);
+        console.error('❌ [EMAIL] Resend failed:', err.message);
       }
     }
 
-    throw new Error(
-      'Production email delivery failed. Set BREVO_API_KEY + BREVO_SENDER_EMAIL, or GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET + GMAIL_REFRESH_TOKEN + GMAIL_SENDER_EMAIL.'
-    );
-  }
-
-  // ╔══════════════════════════════════════════════════════════════════════════╗
-  // ║  METHOD 1 — Brevo (Sendinblue) API  ✅ BEST FOR PRODUCTION             ║
-  // ║  • Uses HTTPS port 443 — NEVER blocked on Render / Vercel / Railway    ║
-  // ║  • Free tier: 300 emails/day — no domain verification needed           ║
-  // ║  • Sends to ANY email address                                           ║
-  // ║  Setup: brevo.com → API Keys → set BREVO_API_KEY env var               ║
-  // ╚══════════════════════════════════════════════════════════════════════════╝
-  if (process.env.BREVO_API_KEY) {
-    try {
-      // .trim() removes invisible whitespace/newlines that sneak in during copy-paste
-      const brevoKey = process.env.BREVO_API_KEY.trim();
-      const senderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'noreply@freelanceos.app').trim();
-      const senderName = (process.env.BREVO_SENDER_NAME || 'FreelanceOS').trim();
-
-      const result = await httpsPost(
-        'api.brevo.com',
-        '/v3/smtp/email',
-        { 'api-key': brevoKey },
-        {
-          sender: { name: senderName, email: senderEmail },
-          to: [{ email: to }],
-          subject,
-          htmlContent: html,
-          textContent: text || '',
-        }
-      );
-
-      console.log('✅ [EMAIL] Sent via Brevo API. MessageId:', result.messageId, '→ To:', to);
-      return { messageId: result.messageId, method: 'brevo' };
-    } catch (err) {
-      errors.push(`Brevo: ${err.message}`);
-      console.error('❌ [EMAIL] Brevo failed:', err.message);
-    }
-  }
-
-  // ╔══════════════════════════════════════════════════════════════════════════╗
-  // ║  METHOD 2 — Resend API                                                 ║
-  // ║  NOTE: Free plan with onboarding@resend.dev ONLY delivers to the       ║
-  // ║  Resend account owner's email. Verify a domain for external delivery.  ║
-  // ╚══════════════════════════════════════════════════════════════════════════╝
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const fromEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
-      const result = await httpsPost(
-        'api.resend.com',
-        '/emails',
-        { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
-        {
-          from: `FreelanceOS <${fromEmail}>`,
-          to: Array.isArray(to) ? to : [to],
-          subject,
-          html,
-          text: text || '',
-        }
-      );
-      console.log('✅ [EMAIL] Sent via Resend. ID:', result.id, '→ To:', to);
-      return { messageId: result.id, method: 'resend' };
-    } catch (err) {
-      errors.push(`Resend: ${err.message}`);
-      console.error('❌ [EMAIL] Resend failed:', err.message);
-    }
-  }
-
-  // ╔══════════════════════════════════════════════════════════════════════════╗
-  // ║  METHOD 3 — Gmail SSL port 465                                         ║
-  // ║  Works locally and on some hosts. Render free MAY block port 465.      ║
-  // ╚══════════════════════════════════════════════════════════════════════════╝
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    try {
-      const smtpConfig = getSmtpConfig();
-      const transporter = nodemailer.createTransport({
-        host: smtpConfig.host,
-        port: smtpConfig.port,
-        secure: smtpConfig.secure,
-        requireTLS: !smtpConfig.secure,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-      });
-      const info = await transporter.sendMail({
-        from: `"FreelanceOS" <${process.env.SMTP_USER}>`,
-        to, subject,
-        text: text || '',
-        html,
-      });
-      console.log('✅ [EMAIL] Sent via Gmail SMTP. ID:', info.messageId, '→ To:', to);
-      return { messageId: info.messageId, method: 'gmail-smtp' };
-    } catch (err) {
-      errors.push(`Gmail SMTP: ${err.message}`);
-      console.error('❌ [EMAIL] Gmail SMTP failed:', err.message);
+    if (provider === 'smtp' && hasSmtpConfig()) {
+      try {
+        return await sendViaSmtp({ to, subject, html, text });
+      } catch (err) {
+        errors.push(`Gmail SMTP: ${err.message}`);
+        console.error('❌ [EMAIL] Gmail SMTP failed:', err.message);
+      }
     }
   }
 
