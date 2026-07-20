@@ -56,6 +56,7 @@ const hasGmailApiConfig = () =>
   isNonEmpty(process.env.GMAIL_SENDER_EMAIL);
 const getExplicitProvider = () => (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
 const isProduction = () => process.env.NODE_ENV === 'production';
+const isLikelyGmailAddress = (email) => typeof email === 'string' && /@gmail\.com$/i.test(email.trim());
 
 const isEmailProviderConfigured = () =>
   hasBrevoConfig() || hasResendConfig() || hasSmtpConfig() || hasGmailApiConfig();
@@ -75,6 +76,7 @@ const getSmtpConfig = () => {
 
 const sendViaSmtp = async ({ to, subject, html, text }) => {
   const smtpConfig = getSmtpConfig();
+  console.log(`ℹ️ [EMAIL] Attempting SMTP delivery → To: ${to}`);
   const transporter = nodemailer.createTransport({
     host: smtpConfig.host,
     port: smtpConfig.port,
@@ -197,6 +199,7 @@ const getGoogleAccessToken = async () => {
 };
 
 const sendViaGmailApi = async ({ to, subject, html, text }) => {
+  console.log(`ℹ️ [EMAIL] Attempting Gmail API delivery → To: ${to}`);
   const accessToken = await getGoogleAccessToken();
   const fromEmail = process.env.GMAIL_SENDER_EMAIL.trim();
   const rawMessage = buildMimeMessage({
@@ -236,12 +239,19 @@ const sendEmail = async ({ to, subject, html, text }) => {
 
     if (provider === 'brevo' && hasBrevoConfig()) {
       try {
+        console.log(`ℹ️ [EMAIL] Attempting Brevo delivery → To: ${to}`);
         const brevoKey = process.env.BREVO_API_KEY.trim();
         const senderEmail = (process.env.BREVO_SENDER_EMAIL || '').trim();
         const senderName = (process.env.BREVO_SENDER_NAME || 'FreelanceOS').trim();
 
         if (!senderEmail) {
           throw new Error('BREVO_SENDER_EMAIL is required.');
+        }
+
+        if (isLikelyGmailAddress(senderEmail)) {
+          console.warn(
+            `⚠️ [EMAIL] BREVO_SENDER_EMAIL is set to ${senderEmail}. For better deliverability, use a verified Brevo sender or custom domain.`
+          );
         }
 
         const result = await httpsPost(
@@ -266,6 +276,7 @@ const sendEmail = async ({ to, subject, html, text }) => {
     }
     if (provider === 'resend' && hasResendConfig()) {
       try {
+        console.log(`ℹ️ [EMAIL] Attempting Resend delivery → To: ${to}`);
         const fromEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
         const result = await httpsPost(
           'api.resend.com',
