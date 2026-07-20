@@ -49,9 +49,15 @@ const isNonEmpty = (value) => typeof value === 'string' && value.trim().length >
 const hasBrevoConfig = () => isNonEmpty(process.env.BREVO_API_KEY);
 const hasResendConfig = () => isNonEmpty(process.env.RESEND_API_KEY);
 const hasSmtpConfig = () => isNonEmpty(process.env.SMTP_USER) && isNonEmpty(process.env.SMTP_PASS);
+const hasGmailApiConfig = () =>
+  isNonEmpty(process.env.GMAIL_CLIENT_ID) &&
+  isNonEmpty(process.env.GMAIL_CLIENT_SECRET) &&
+  isNonEmpty(process.env.GMAIL_REFRESH_TOKEN) &&
+  isNonEmpty(process.env.GMAIL_SENDER_EMAIL);
 const isProduction = () => process.env.NODE_ENV === 'production';
 
-const isEmailProviderConfigured = () => hasBrevoConfig() || hasResendConfig() || hasSmtpConfig();
+const isEmailProviderConfigured = () =>
+  hasBrevoConfig() || hasResendConfig() || hasSmtpConfig() || hasGmailApiConfig();
 
 const getSmtpConfig = () => {
   const port = Number.parseInt(process.env.SMTP_PORT || '587', 10);
@@ -66,44 +72,162 @@ const getSmtpConfig = () => {
   };
 };
 
+const encodeBase64Url = (input) =>
+  Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+
+const encodeMimeHeader = (value) => `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
+
+const buildMimeMessage = ({ from, to, subject, html, text }) => {
+  const boundary = `boundary_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const plainText = text || '';
+  const htmlBody = html || '';
+
+  return [
+    `From: ${from}`,
+    `To: ${Array.isArray(to) ? to.join(', ') : to}`,
+    `Subject: ${encodeMimeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    plainText,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    htmlBody,
+    '',
+    `--${boundary}--`,
+    '',
+  ].join('\r\n');
+};
+
+const getGoogleAccessToken = async () => {
+  const body = new URLSearchParams({
+    client_id: process.env.GMAIL_CLIENT_ID.trim(),
+    client_secret: process.env.GMAIL_CLIENT_SECRET.trim(),
+    refresh_token: process.env.GMAIL_REFRESH_TOKEN.trim(),
+    grant_type: 'refresh_token',
+  }).toString();
+
+  const response = await new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'oauth2.googleapis.com',
+        port: 443,
+        path: '/token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed = data ? JSON.parse(data) : {};
+            if (res.statusCode >= 200 && res.statusCode < 300) resolve(parsed);
+            else reject(new Error(`HTTP ${res.statusCode}: ${parsed.error_description || parsed.error || data}`));
+          } catch {
+            reject(new Error(`Parse error: ${data}`));
+          }
+        });
+      }
+    );
+
+    req.on('error', (err) => reject(new Error(`Network: ${err.message}`)));
+    req.write(body);
+    req.end();
+  });
+
+  if (!response.access_token) {
+    throw new Error('Google OAuth token response missing access_token');
+  }
+
+  return response.access_token;
+};
+
+const sendViaGmailApi = async ({ to, subject, html, text }) => {
+  const accessToken = await getGoogleAccessToken();
+  const fromEmail = process.env.GMAIL_SENDER_EMAIL.trim();
+  const rawMessage = buildMimeMessage({
+    from: fromEmail,
+    to,
+    subject,
+    html,
+    text,
+  });
+
+  const result = await httpsPost(
+    'gmail.googleapis.com',
+    '/gmail/v1/users/me/messages/send',
+    { Authorization: `Bearer ${accessToken}` },
+    { raw: encodeBase64Url(rawMessage) }
+  );
+
+  console.log('✅ [EMAIL] Sent via Gmail API. ID:', result.id, '→ To:', to);
+  return { messageId: result.id, method: 'gmail-api' };
+};
+
 // ── Main sendEmail ────────────────────────────────────────────────────────────
 const sendEmail = async ({ to, subject, html, text }) => {
   const errors = [];
   const providerConfigured = isEmailProviderConfigured();
 
   if (isProduction()) {
-    if (!hasBrevoConfig()) {
-      throw new Error('Production email is locked to Brevo. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.');
-    }
+    if (hasBrevoConfig()) {
+      try {
+        const brevoKey = process.env.BREVO_API_KEY.trim();
+        const senderEmail = (process.env.BREVO_SENDER_EMAIL || '').trim();
+        const senderName = (process.env.BREVO_SENDER_NAME || 'FreelanceOS').trim();
 
-    try {
-      const brevoKey = process.env.BREVO_API_KEY.trim();
-      const senderEmail = (process.env.BREVO_SENDER_EMAIL || '').trim();
-      const senderName = (process.env.BREVO_SENDER_NAME || 'FreelanceOS').trim();
-
-      if (!senderEmail) {
-        throw new Error('BREVO_SENDER_EMAIL is required in production.');
-      }
-
-      const result = await httpsPost(
-        'api.brevo.com',
-        '/v3/smtp/email',
-        { 'api-key': brevoKey },
-        {
-          sender: { name: senderName, email: senderEmail },
-          to: [{ email: to }],
-          subject,
-          htmlContent: html,
-          textContent: text || '',
+        if (!senderEmail) {
+          throw new Error('BREVO_SENDER_EMAIL is required in production.');
         }
-      );
 
-      console.log('✅ [EMAIL] Sent via Brevo API. MessageId:', result.messageId, '→ To:', to);
-      return { messageId: result.messageId, method: 'brevo' };
-    } catch (err) {
-      console.error('❌ [EMAIL] Brevo failed in production:', err.message);
-      throw new Error(`Production email delivery failed: Brevo: ${err.message}`);
+        const result = await httpsPost(
+          'api.brevo.com',
+          '/v3/smtp/email',
+          { 'api-key': brevoKey },
+          {
+            sender: { name: senderName, email: senderEmail },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html,
+            textContent: text || '',
+          }
+        );
+
+        console.log('✅ [EMAIL] Sent via Brevo API. MessageId:', result.messageId, '→ To:', to);
+        return { messageId: result.messageId, method: 'brevo' };
+      } catch (err) {
+        errors.push(`Brevo: ${err.message}`);
+        console.error('❌ [EMAIL] Brevo failed in production:', err.message);
+      }
     }
+
+    if (hasGmailApiConfig()) {
+      try {
+        return await sendViaGmailApi({ to, subject, html, text });
+      } catch (err) {
+        errors.push(`Gmail API: ${err.message}`);
+        console.error('❌ [EMAIL] Gmail API failed in production:', err.message);
+      }
+    }
+
+    throw new Error(
+      'Production email delivery failed. Set BREVO_API_KEY + BREVO_SENDER_EMAIL, or GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET + GMAIL_REFRESH_TOKEN + GMAIL_SENDER_EMAIL.'
+    );
   }
 
   // ╔══════════════════════════════════════════════════════════════════════════╗

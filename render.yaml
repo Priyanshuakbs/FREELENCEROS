@@ -29,6 +29,14 @@ services:
         sync: false        # Use a verified Brevo sender email
       - key: BREVO_SENDER_NAME
         value: FreelanceOS
+      - key: GMAIL_CLIENT_ID
+        sync: false        # Set this manually in Render Dashboard
+      - key: GMAIL_CLIENT_SECRET
+        sync: false        # Set this manually in Render Dashboard
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false        # Set this manually in Render Dashboard
+      - key: GMAIL_SENDER_EMAIL
+        sync: false        # Your Gmail address used for sending
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
