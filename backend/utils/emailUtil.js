@@ -185,6 +185,15 @@ const sendEmail = async ({ to, subject, html, text }) => {
   const providerConfigured = isEmailProviderConfigured();
 
   if (isProduction()) {
+    if (hasGmailApiConfig()) {
+      try {
+        return await sendViaGmailApi({ to, subject, html, text });
+      } catch (err) {
+        errors.push(`Gmail API: ${err.message}`);
+        console.error('❌ [EMAIL] Gmail API failed in production:', err.message);
+      }
+    }
+
     if (hasBrevoConfig()) {
       try {
         const brevoKey = process.env.BREVO_API_KEY.trim();
@@ -213,15 +222,6 @@ const sendEmail = async ({ to, subject, html, text }) => {
       } catch (err) {
         errors.push(`Brevo: ${err.message}`);
         console.error('❌ [EMAIL] Brevo failed in production:', err.message);
-      }
-    }
-
-    if (hasGmailApiConfig()) {
-      try {
-        return await sendViaGmailApi({ to, subject, html, text });
-      } catch (err) {
-        errors.push(`Gmail API: ${err.message}`);
-        console.error('❌ [EMAIL] Gmail API failed in production:', err.message);
       }
     }
 

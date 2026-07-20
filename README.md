@@ -514,16 +514,16 @@ FRONTEND_URL=http://localhost:5173
 GEMINI_API_KEY=your_gemini_api_key
 
 # Email — production options
-# Option A: Brevo over HTTPS
-BREVO_API_KEY=your_brevo_api_key
-BREVO_SENDER_EMAIL=verified_sender@yourdomain.com
-BREVO_SENDER_NAME=FreelanceOS
-
-# Option B: Gmail API over HTTPS (free/no-domain path)
+# Option A: Gmail API over HTTPS (best free/no-domain path)
 GMAIL_CLIENT_ID=your_google_oauth_client_id
 GMAIL_CLIENT_SECRET=your_google_oauth_client_secret
 GMAIL_REFRESH_TOKEN=your_google_oauth_refresh_token
 GMAIL_SENDER_EMAIL=your_gmail_address@gmail.com
+
+# Option B: Brevo over HTTPS
+BREVO_API_KEY=your_brevo_api_key
+BREVO_SENDER_EMAIL=verified_sender@yourdomain.com
+BREVO_SENDER_NAME=FreelanceOS
 
 # Optional fallback: Gmail SMTP (works locally; Render Free blocks SMTP ports 465/587)
 SMTP_HOST=smtp.gmail.com
@@ -672,8 +672,8 @@ freelancer-saas/
 
 **Emails work locally but not on Render**
 - Render Free blocks outbound SMTP ports `465` and `587`, so Gmail SMTP will fail there
-- Use `BREVO_API_KEY` plus a verified `BREVO_SENDER_EMAIL` for production, or
-- Use Gmail API with `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER_EMAIL`
+- For no-domain free production, use Gmail API with `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER_EMAIL`
+- If you already have a verified Brevo sender/domain, you can use `BREVO_API_KEY` instead
 - If you want Gmail SMTP in production, move to a host that allows outbound SMTP
 
 **PDF generation fails — Puppeteer error on deployment**
