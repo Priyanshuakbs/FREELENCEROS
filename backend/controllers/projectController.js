@@ -285,14 +285,26 @@ exports.inviteCollaborator = async (req, res) => {
       </div>
     `;
 
-    await sendEmail({
-      to: email,
-      subject: `🤝 Collaborate on project "${project.title}" - FreelanceOS`,
-      html: htmlContent,
-      text: `${req.user.name} invited you to collaborate on "${project.title}". Accept here: ${inviteLink}`
-    });
+    let emailSent = false;
+    try {
+      await sendEmail({
+        to: email,
+        subject: `🤝 Collaborate on project "${project.title}" - FreelanceOS`,
+        html: htmlContent,
+        text: `${req.user.name} invited you to collaborate on "${project.title}". Accept here: ${inviteLink}`
+      });
+      emailSent = true;
+    } catch (mailErr) {
+      console.error('Failed to send collaboration invitation email:', mailErr.message);
+    }
 
-    res.json({ message: 'Collaboration invitation sent successfully!' });
+    res.json({
+      message: emailSent
+        ? 'Collaboration invitation sent successfully!'
+        : 'Invitation created, but email delivery failed or is not configured.',
+      emailSent,
+      invitationLink: inviteLink,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

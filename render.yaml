@@ -23,6 +23,12 @@ services:
         sync: false        # Set this manually in Render Dashboard
       - key: GEMINI_API_KEY
         sync: false        # Set this manually in Render Dashboard
+      - key: BREVO_API_KEY
+        sync: false        # Set this manually in Render Dashboard
+      - key: BREVO_SENDER_EMAIL
+        sync: false        # Use a verified Brevo sender email
+      - key: BREVO_SENDER_NAME
+        value: FreelanceOS
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT

@@ -446,6 +446,7 @@ Ensure you have the following installed and accounts created:
 - **Cloudinary** account — [Sign up free](https://cloudinary.com)
 - **Razorpay** account — [Sign up](https://razorpay.com) (use **Test Mode** for development)
 - **Google AI Studio** API key — [Get key](https://aistudio.google.com/app/apikey) (Gemini features)
+- **Brevo** account — recommended for production email delivery on Render
 
 ### 1. Clone the Repository
 
@@ -511,7 +512,12 @@ FRONTEND_URL=http://localhost:5173
 # AI (Google Gemini)
 GEMINI_API_KEY=your_gemini_api_key
 
-# Email — Gmail SMTP (use App Password, NOT your account password)
+# Email — production recommendation: Brevo over HTTPS
+BREVO_API_KEY=your_brevo_api_key
+BREVO_SENDER_EMAIL=verified_sender@yourdomain.com
+BREVO_SENDER_NAME=FreelanceOS
+
+# Optional fallback: Gmail SMTP (works locally; Render Free blocks SMTP ports 465/587)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
@@ -655,6 +661,11 @@ freelancer-saas/
 **Emails not sending — `Invalid login` error**
 - Ensure you're using a **Gmail App Password**, not your actual Gmail password
 - Enable 2FA on your Gmail account first, then generate an App Password from [Google Account Security](https://myaccount.google.com/security)
+
+**Emails work locally but not on Render**
+- Render Free blocks outbound SMTP ports `465` and `587`, so Gmail SMTP will fail there
+- Use `BREVO_API_KEY` plus a verified `BREVO_SENDER_EMAIL` for production
+- If you want Gmail SMTP in production, move to a host that allows outbound SMTP
 
 **PDF generation fails — Puppeteer error on deployment**
 - On Linux servers (like Render), Puppeteer may need additional Chrome dependencies

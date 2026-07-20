@@ -44,9 +44,67 @@ const httpsPost = (hostname, path, headers, payload) => {
   });
 };
 
+const isNonEmpty = (value) => typeof value === 'string' && value.trim().length > 0;
+
+const hasBrevoConfig = () => isNonEmpty(process.env.BREVO_API_KEY);
+const hasResendConfig = () => isNonEmpty(process.env.RESEND_API_KEY);
+const hasSmtpConfig = () => isNonEmpty(process.env.SMTP_USER) && isNonEmpty(process.env.SMTP_PASS);
+const isProduction = () => process.env.NODE_ENV === 'production';
+
+const isEmailProviderConfigured = () => hasBrevoConfig() || hasResendConfig() || hasSmtpConfig();
+
+const getSmtpConfig = () => {
+  const port = Number.parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE
+    ? process.env.SMTP_SECURE.toLowerCase() === 'true'
+    : port === 465;
+
+  return {
+    host: (process.env.SMTP_HOST || 'smtp.gmail.com').trim(),
+    port: Number.isFinite(port) ? port : 587,
+    secure,
+  };
+};
+
 // ── Main sendEmail ────────────────────────────────────────────────────────────
 const sendEmail = async ({ to, subject, html, text }) => {
   const errors = [];
+  const providerConfigured = isEmailProviderConfigured();
+
+  if (isProduction()) {
+    if (!hasBrevoConfig()) {
+      throw new Error('Production email is locked to Brevo. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.');
+    }
+
+    try {
+      const brevoKey = process.env.BREVO_API_KEY.trim();
+      const senderEmail = (process.env.BREVO_SENDER_EMAIL || '').trim();
+      const senderName = (process.env.BREVO_SENDER_NAME || 'FreelanceOS').trim();
+
+      if (!senderEmail) {
+        throw new Error('BREVO_SENDER_EMAIL is required in production.');
+      }
+
+      const result = await httpsPost(
+        'api.brevo.com',
+        '/v3/smtp/email',
+        { 'api-key': brevoKey },
+        {
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email: to }],
+          subject,
+          htmlContent: html,
+          textContent: text || '',
+        }
+      );
+
+      console.log('✅ [EMAIL] Sent via Brevo API. MessageId:', result.messageId, '→ To:', to);
+      return { messageId: result.messageId, method: 'brevo' };
+    } catch (err) {
+      console.error('❌ [EMAIL] Brevo failed in production:', err.message);
+      throw new Error(`Production email delivery failed: Brevo: ${err.message}`);
+    }
+  }
 
   // ╔══════════════════════════════════════════════════════════════════════════╗
   // ║  METHOD 1 — Brevo (Sendinblue) API  ✅ BEST FOR PRODUCTION             ║
@@ -117,10 +175,12 @@ const sendEmail = async ({ to, subject, html, text }) => {
   // ╚══════════════════════════════════════════════════════════════════════════╝
   if (process.env.SMTP_USER && process.env.SMTP_PASS) {
     try {
+      const smtpConfig = getSmtpConfig();
       const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        secure: smtpConfig.secure,
+        requireTLS: !smtpConfig.secure,
         auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
@@ -132,11 +192,11 @@ const sendEmail = async ({ to, subject, html, text }) => {
         text: text || '',
         html,
       });
-      console.log('✅ [EMAIL] Sent via Gmail SSL 465. ID:', info.messageId, '→ To:', to);
-      return { messageId: info.messageId, method: 'gmail-ssl' };
+      console.log('✅ [EMAIL] Sent via Gmail SMTP. ID:', info.messageId, '→ To:', to);
+      return { messageId: info.messageId, method: 'gmail-smtp' };
     } catch (err) {
-      errors.push(`Gmail SSL: ${err.message}`);
-      console.error('❌ [EMAIL] Gmail SSL failed:', err.message);
+      errors.push(`Gmail SMTP: ${err.message}`);
+      console.error('❌ [EMAIL] Gmail SMTP failed:', err.message);
     }
   }
 
@@ -144,18 +204,19 @@ const sendEmail = async ({ to, subject, html, text }) => {
   if (errors.length > 0) {
     const summary = errors.join(' | ');
     console.error('🚨 [EMAIL] All methods failed:', summary, '| To:', to);
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(`Email delivery failed: ${summary}`);
-    }
-  } else {
-    console.warn('⚠️  [EMAIL] No email provider configured. Set BREVO_API_KEY for production.');
+    throw new Error(`Email delivery failed: ${summary}`);
+  }
+
+  if (!providerConfigured) {
+    const message = 'No email provider configured. Set BREVO_API_KEY, RESEND_API_KEY, or SMTP_USER/SMTP_PASS.';
+    console.warn(`⚠️  [EMAIL] ${message} Using mock send in non-production mode.`);
   }
 
   // ── Dev mock ──────────────────────────────────────────────────────────────
   console.log('📧 [EMAIL MOCK] ─────────────────────────────');
   console.log('To     :', to);
   console.log('Subject:', subject);
-  const link = html.match(/href="([^"]+)"/);
+  const link = typeof html === 'string' ? html.match(/href="([^"]+)"/) : null;
   if (link) console.log('Link   :', link[1]);
   else console.log('Body   :', text || '(html)');
   console.log('─────────────────────────────────────────────');

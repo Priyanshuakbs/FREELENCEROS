@@ -101,17 +101,32 @@ exports.createLead = async (req, res) => {
       createdBy: req.user._id,
     });
 
+    await lead.save();
+
+    let emailSent = false;
     if (lead.email) {
-      if (lead.status === 'Proposal Sent') {
-        await sendProposalEmailHelper(lead, req);
-      } else {
-        await sendWelcomeEmailHelper(lead, req);
+      try {
+        if (lead.status === 'Proposal Sent') {
+          await sendProposalEmailHelper(lead, req);
+        } else {
+          await sendWelcomeEmailHelper(lead, req);
+        }
+        emailSent = true;
+      } catch (mailErr) {
+        console.error('Failed to send lead email:', mailErr.message);
+      } finally {
+        await lead.save();
       }
     }
 
-    await lead.save();
-
-    res.status(201).json({ success: true, message: 'Lead created successfully', lead });
+    res.status(201).json({
+      success: true,
+      message: emailSent
+        ? 'Lead created successfully and email sent'
+        : 'Lead created successfully, but email delivery failed or is not configured',
+      lead,
+      emailSent,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -128,11 +143,17 @@ exports.updateLead = async (req, res) => {
 
     Object.assign(lead, { ...req.body, budget: Number(req.body.budget || lead.budget) });
 
-    if (status === 'Proposal Sent' && oldStatus !== 'Proposal Sent') {
-      await sendProposalEmailHelper(lead, req);
-    }
-
     await lead.save();
+
+    if (status === 'Proposal Sent' && oldStatus !== 'Proposal Sent') {
+      try {
+        await sendProposalEmailHelper(lead, req);
+      } catch (mailErr) {
+        console.error('Failed to send proposal email while updating lead:', mailErr.message);
+      } finally {
+        await lead.save();
+      }
+    }
 
     res.status(200).json({ success: true, message: 'Lead updated successfully', lead });
   } catch (err) {
@@ -162,11 +183,17 @@ exports.updateLeadStatus = async (req, res) => {
     const oldStatus = lead.status;
     lead.status = status;
 
-    if (status === 'Proposal Sent' && oldStatus !== 'Proposal Sent') {
-      await sendProposalEmailHelper(lead, req);
-    }
-
     await lead.save();
+
+    if (status === 'Proposal Sent' && oldStatus !== 'Proposal Sent') {
+      try {
+        await sendProposalEmailHelper(lead, req);
+      } catch (mailErr) {
+        console.error('Failed to send proposal email while updating status:', mailErr.message);
+      } finally {
+        await lead.save();
+      }
+    }
 
     res.status(200).json({ success: true, message: 'Status updated', lead });
   } catch (err) {
@@ -294,12 +321,16 @@ exports.acceptProposal = async (req, res) => {
       </div>
     `;
 
-    await sendEmail({
-      to: freelancerEmail,
-      subject: `🎉 Proposal Accepted - ${lead.name}`,
-      html: htmlContent,
-      text: `Proposal accepted by ${lead.name} from ${lead.company || 'N/A'}.`,
-    });
+    try {
+      await sendEmail({
+        to: freelancerEmail,
+        subject: `🎉 Proposal Accepted - ${lead.name}`,
+        html: htmlContent,
+        text: `Proposal accepted by ${lead.name} from ${lead.company || 'N/A'}.`,
+      });
+    } catch (mailErr) {
+      console.error('Failed to notify freelancer about accepted proposal:', mailErr.message);
+    }
 
     // Notify via Socket.io if available
     const io = req.app.get('io');
