@@ -151,7 +151,9 @@ exports.updateProfile = async (req, res) => {
     }
 
     if (req.file) {
-      updates.avatar = `/uploads/${req.file.filename}`;
+      // Cloudinary: req.file.path is the full HTTPS URL
+      // Disk storage fallback: construct local path
+      updates.avatar = req.file.path || `/uploads/${req.file.filename}`;
     }
 
     const user = await User.findByIdAndUpdate(

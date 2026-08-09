@@ -65,7 +65,13 @@ export default function Profile() {
       gstNumber: user.gstNumber || '',
       businessRegistrationNumber: user.businessRegistrationNumber || '',
     })
-    setAvatarPreview(user.avatar ? `${backendOrigin}${user.avatar}` : '')
+    // Cloudinary gives a full https:// URL; legacy local uploads need backendOrigin prefix
+    const avatarUrl = user.avatar
+      ? user.avatar.startsWith('http')
+        ? user.avatar
+        : `${backendOrigin}${user.avatar}`
+      : ''
+    setAvatarPreview(avatarUrl)
   }, [user])
 
   useEffect(() => {
