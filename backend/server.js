@@ -13,14 +13,23 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const app = express();
 const server = http.createServer(app);
 
-const logEmailConfigDiagnostics = () => {
-  const smtpUser = (process.env.SMTP_USER || '').trim();
-  const smtpPass = (process.env.SMTP_PASS || '').trim();
+// ── Trust proxy (required for Render/Heroku/any reverse proxy) ───────────────
+// Fixes: express-rate-limit X-Forwarded-For validation error on Render
+app.set('trust proxy', 1);
 
-  if (smtpUser && smtpPass) {
-    console.log(`📧 [EMAIL] Nodemailer (Gmail SMTP) configured. Sender: ${smtpUser}`);
-  } else {
-    console.warn('⚠️  [EMAIL] SMTP_USER or SMTP_PASS not set — emails will run in mock mode.');
+const logEmailConfigDiagnostics = () => {
+  const hasBrevo = !!(process.env.BREVO_API_KEY || '').trim();
+  const hasSmtp  = !!(process.env.SMTP_USER || '').trim() && !!(process.env.SMTP_PASS || '').trim();
+
+  if (hasBrevo) {
+    const sender = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || '?').trim();
+    console.log(`📧 [EMAIL] Brevo API configured. Sender: ${sender} (production — HTTPS/443)`);
+  }
+  if (hasSmtp) {
+    console.log(`📧 [EMAIL] Gmail SMTP configured. Sender: ${(process.env.SMTP_USER || '').trim()} (local fallback)`);
+  }
+  if (!hasBrevo && !hasSmtp) {
+    console.warn('⚠️  [EMAIL] No provider configured — emails will use mock mode.');
   }
 };
 
