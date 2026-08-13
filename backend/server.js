@@ -13,44 +13,14 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const app = express();
 const server = http.createServer(app);
 
-const isNonEmpty = (value) => typeof value === 'string' && value.trim().length > 0;
-const isLikelyGmailAddress = (email) => typeof email === 'string' && /@gmail\.com$/i.test(email.trim());
 const logEmailConfigDiagnostics = () => {
-  const hasBrevo = isNonEmpty(process.env.BREVO_API_KEY);
-  const hasResend = isNonEmpty(process.env.RESEND_API_KEY);
-  const hasSmtp = isNonEmpty(process.env.SMTP_USER) && isNonEmpty(process.env.SMTP_PASS);
-  const hasGmailApi =
-    isNonEmpty(process.env.GMAIL_CLIENT_ID) &&
-    isNonEmpty(process.env.GMAIL_CLIENT_SECRET) &&
-    isNonEmpty(process.env.GMAIL_REFRESH_TOKEN) &&
-    isNonEmpty(process.env.GMAIL_SENDER_EMAIL);
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  const smtpPass = (process.env.SMTP_PASS || '').trim();
 
-  const configuredProviders = [
-    hasBrevo ? 'brevo' : null,
-    hasGmailApi ? 'gmail-api' : null,
-    hasResend ? 'resend' : null,
-    hasSmtp ? 'smtp' : null,
-  ].filter(Boolean);
-
-  console.log(`📧 Email providers configured: ${configuredProviders.join(', ') || 'none'}`);
-
-  if (hasBrevo) {
-    const senderEmail = (process.env.BREVO_SENDER_EMAIL || '').trim();
-    if (!senderEmail) {
-      console.warn('⚠️ BREVO_API_KEY is set but BREVO_SENDER_EMAIL is missing.');
-    } else if (isLikelyGmailAddress(senderEmail)) {
-      console.warn(
-        `⚠️ BREVO_SENDER_EMAIL is ${senderEmail}. Brevo works best with a verified sender/custom domain, not a Gmail address.`
-      );
-    }
-  }
-
-  if (process.env.NODE_ENV === 'production' && hasSmtp) {
-    console.warn('⚠️ SMTP is configured in production. On many hosts, outbound SMTP ports 465/587 are blocked or unreliable.');
-  }
-
-  if (!configuredProviders.length) {
-    console.warn('⚠️ No email provider is configured. Email requests will fall back to mock mode in non-production environments.');
+  if (smtpUser && smtpPass) {
+    console.log(`📧 [EMAIL] Nodemailer (Gmail SMTP) configured. Sender: ${smtpUser}`);
+  } else {
+    console.warn('⚠️  [EMAIL] SMTP_USER or SMTP_PASS not set — emails will run in mock mode.');
   }
 };
 
