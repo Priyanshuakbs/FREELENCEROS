@@ -23,6 +23,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import AcceptInvite from './pages/AcceptInvite'
 import Proposals from './pages/Proposals'
+import ProposalAccepted from './pages/ProposalAccepted'
 import ClientOnboarding from './pages/ClientOnboarding'
 import Profile from './pages/Profile'
 
@@ -36,6 +37,11 @@ import ClientForgotPassword from './pages/ClientForgotPassword'
 import ClientResetPassword from './pages/ClientResetPassword'
 import ClientVerifyEmail from './pages/ClientVerifyEmail'
 import ClientDashboard from './pages/ClientDashboard'
+
+// Chat & Portfolio Pages
+import Messages from './pages/Messages'
+import PublicPortfolio from './pages/PublicPortfolio'
+import FreelancersDirectory from './pages/FreelancersDirectory'
 
 const PrivateRoute = ({ children }) => {
   const { token, user } = useAuthStore()
@@ -87,6 +93,24 @@ const ClientRoute = ({ children }) => {
   if (!token) return <Navigate to="/client-login" />
 
   return children
+}
+
+const MessagesRoute = () => {
+  const { token: userToken, user } = useAuthStore()
+  const { token: clientToken } = useClientAuthStore()
+
+  if (userToken) {
+    if (user && !user.isVerified) {
+      return <Navigate to="/verify-email" />
+    }
+    return <Layout><Messages /></Layout>
+  }
+
+  if (clientToken) {
+    return <Messages />
+  }
+
+  return <Navigate to="/login" />
 }
 
 const FallbackRoute = () => {
@@ -147,8 +171,43 @@ export default function App() {
         />
 
         <Route
+          path="/proposal-accepted"
+          element={<ProposalAccepted />}
+        />
+
+        <Route
+          path="/freelancers"
+          element={<FreelancersDirectory />}
+        />
+
+        <Route
+          path="/explore"
+          element={<FreelancersDirectory />}
+        />
+
+        <Route
+          path="/portfolio/:identifier"
+          element={<PublicPortfolio />}
+        />
+
+        <Route
+          path="/freelancers/:identifier"
+          element={<PublicPortfolio />}
+        />
+
+        <Route
           path="/onboarding/:token"
           element={<ClientOnboarding />}
+        />
+
+        <Route
+          path="/messages"
+          element={<MessagesRoute />}
+        />
+
+        <Route
+          path="/messages/:conversationId"
+          element={<MessagesRoute />}
         />
 
         {/* ---------------- Client Dashboard Routes ---------------- */}

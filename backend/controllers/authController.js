@@ -4,12 +4,13 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendEmail } = require('../utils/emailUtil');
 
-const generateToken = (id, role = 'user') => jwt.sign({ id, role }, process.env.JWT_SECRET, {
-  expiresIn: process.env.JWT_EXPIRE,
+const generateToken = (id, role = 'user') => jwt.sign({ id, role }, process.env.JWT_SECRET || 'freelancer_saas_secret_key_2024', {
+  expiresIn: process.env.JWT_EXPIRE || '30d',
 });
 
 const serializeUser = (user) => ({
   id: user._id,
+  _id: user._id,
   name: user.name,
   email: user.email,
   avatar: user.avatar || '',
@@ -26,6 +27,17 @@ const serializeUser = (user) => ({
   monthlyGoal: user.monthlyGoal,
   isVerified: user.isVerified,
   role: user.role,
+  username: user.username || '',
+  skills: user.skills || [],
+  services: user.services || [],
+  experience: user.experience || '',
+  portfolioProjects: user.portfolioProjects || [],
+  bankAccountName: user.bankAccountName || '',
+  bankAccountNumber: user.bankAccountNumber || '',
+  ifscCode: user.ifscCode || '',
+  upiId: user.upiId || '',
+  gstNumber: user.gstNumber || '',
+  businessRegistrationNumber: user.businessRegistrationNumber || '',
 });
 
 exports.register = async (req, res) => {
@@ -133,6 +145,32 @@ exports.updateGoal = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
+    const parseArray = (field) => {
+      if (Array.isArray(field)) return field;
+      if (typeof field === 'string' && field.trim()) {
+        try {
+          const parsed = JSON.parse(field);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {
+          return field.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+      }
+      return [];
+    };
+
+    let portfolioProjects = [];
+    if (req.body.portfolioProjects) {
+      if (typeof req.body.portfolioProjects === 'string') {
+        try {
+          portfolioProjects = JSON.parse(req.body.portfolioProjects);
+        } catch {
+          portfolioProjects = [];
+        }
+      } else if (Array.isArray(req.body.portfolioProjects)) {
+        portfolioProjects = req.body.portfolioProjects;
+      }
+    }
+
     const updates = {
       name: req.body.name?.trim(),
       title: req.body.title?.trim() || '',
@@ -144,7 +182,38 @@ exports.updateProfile = async (req, res) => {
       linkedin: req.body.linkedin?.trim() || '',
       github: req.body.github?.trim() || '',
       portfolio: req.body.portfolio?.trim() || '',
+      bankAccountName: req.body.bankAccountName?.trim() || '',
+      bankAccountNumber: req.body.bankAccountNumber?.trim() || '',
+      ifscCode: req.body.ifscCode?.trim() || '',
+      upiId: req.body.upiId?.trim() || '',
+      gstNumber: req.body.gstNumber?.trim() || '',
+      businessRegistrationNumber: req.body.businessRegistrationNumber?.trim() || '',
+      experience: req.body.experience?.trim() || '',
     };
+
+    if (req.body.username !== undefined) {
+      const usernameClean = req.body.username?.trim().toLowerCase();
+      if (usernameClean) {
+        // Check uniqueness if changed
+        const existing = await User.findOne({ username: usernameClean, _id: { $ne: req.user._id } });
+        if (existing) {
+          return res.status(400).json({ message: 'Username is already taken by another user' });
+        }
+        updates.username = usernameClean;
+      } else {
+        updates.username = undefined;
+      }
+    }
+
+    if (req.body.skills !== undefined) {
+      updates.skills = parseArray(req.body.skills);
+    }
+    if (req.body.services !== undefined) {
+      updates.services = parseArray(req.body.services);
+    }
+    if (req.body.portfolioProjects !== undefined) {
+      updates.portfolioProjects = portfolioProjects;
+    }
 
     if (!updates.name) {
       return res.status(400).json({ message: 'Name is required.' });

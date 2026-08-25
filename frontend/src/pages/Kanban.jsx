@@ -282,6 +282,7 @@ export default function Kanban() {
                           </select>
                           <input
                             type="date"
+                            min={new Date().toISOString().split('T')[0]}
                             value={newTask.dueDate}
                             onChange={(e) => setNewTask((prev) => ({ ...prev, dueDate: e.target.value }))}
                             className="input-shell w-full"

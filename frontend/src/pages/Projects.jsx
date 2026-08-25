@@ -917,6 +917,7 @@ export default function Projects() {
                   <label className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 block">Deadline</label>
                   <input
                     type="date"
+                    min={new Date().toISOString().split('T')[0]}
                     value={form.deadline}
                     onChange={(e) => setForm({ ...form, deadline: e.target.value })}
                     className="w-full bg-[#0a0a0f]/80 text-white text-sm rounded-xl px-4 py-2.5 border border-white/[0.04] focus:border-indigo-500 focus:outline-none transition-all text-xs"

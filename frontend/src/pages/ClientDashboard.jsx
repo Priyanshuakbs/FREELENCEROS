@@ -20,7 +20,8 @@ import {
   Send,
   Trash2,
   CheckSquare,
-  AlertCircle
+  AlertCircle,
+  Users
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../lib/axios'
@@ -291,7 +292,19 @@ export default function ClientDashboard() {
               FreelanceOS Client
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/freelancers')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl text-xs font-semibold transition shadow-sm"
+            >
+              <Users size={14} /> Find Freelancers
+            </button>
+            <button
+              onClick={() => navigate('/messages')}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-xl text-xs font-semibold transition shadow-sm"
+            >
+              <MessageSquare size={14} /> Messages
+            </button>
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold">{client?.name}</p>
               <p className="text-xs text-indigo-400">{client?.company || 'Client Profile'}</p>

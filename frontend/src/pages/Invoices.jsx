@@ -605,6 +605,7 @@ function InvoiceFormModal({
               <label className="mb-2 block text-sm text-slate-300">Due date</label>
               <input
                 type="date"
+                min={new Date().toISOString().split('T')[0]}
                 value={form.dueDate}
                 onChange={(event) => onChange({ ...form, dueDate: event.target.value })}
                 className="input-shell w-full"

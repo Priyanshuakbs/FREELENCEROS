@@ -15,6 +15,7 @@ const {
 } = require('../controllers/leadController');
 
 router.get('/accept-proposal/:token', acceptProposal);
+router.post('/accept-proposal/:token', acceptProposal);
 
 router.use(protect);
 

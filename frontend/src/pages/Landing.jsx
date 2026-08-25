@@ -150,8 +150,14 @@ export default function Landing() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => navigate('/freelancers')}
+            className="text-indigo-400 hover:text-indigo-300 transition-colors text-xs font-semibold px-3 py-2 flex items-center gap-1"
+          >
+            <span>Explore Freelancers</span>
+          </button>
+          <button
             onClick={() => navigate('/login')}
-            className="text-gray-400 hover:text-white transition-colors text-xs font-semibold px-4 py-2"
+            className="text-gray-400 hover:text-white transition-colors text-xs font-semibold px-3 py-2"
           >
             Sign In
           </button>

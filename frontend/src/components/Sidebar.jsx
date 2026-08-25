@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -9,6 +10,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
   PhoneCall,
   User,
   Users,
@@ -16,12 +18,15 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import useAuthStore from '../store/authStore'
+import api from '../lib/axios'
+import { getSocket } from '../lib/socket'
 
 const adminSections = [
   {
     label: 'Workspace',
     items: [
       { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, description: 'Business overview' },
+      { name: 'Messages', path: '/messages', icon: MessageSquare, description: 'Client & lead chat', hasBadge: true },
     ],
   },
   {
@@ -43,7 +48,7 @@ const adminSections = [
   {
     label: 'Account',
     items: [
-      { name: 'Settings', path: '/profile', icon: User, description: 'Profile & preferences' },
+      { name: 'Settings', path: '/profile', icon: User, description: 'Profile & portfolio' },
     ],
   },
 ]
@@ -53,6 +58,7 @@ const userSections = [
     label: 'Workspace',
     items: [
       { name: 'Projects', path: '/projects', icon: FolderKanban, description: 'Active work' },
+      { name: 'Messages', path: '/messages', icon: MessageSquare, description: 'Project chat', hasBadge: true },
     ],
   },
   {
@@ -80,6 +86,39 @@ export default function Sidebar({
   const navigate = useNavigate()
   const isCollapsed = mobile ? false : controlledCollapsed
   const sections = user?.role === 'admin' ? adminSections : userSections
+
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+
+    const fetchUnread = async () => {
+      try {
+        const res = await api.get('/conversations/unread-count')
+        setUnreadCount(Number(res.data?.unreadCount || 0))
+      } catch {
+        // silent fail on initial load
+      }
+    }
+
+    fetchUnread()
+
+    const socket = getSocket()
+    const handleNewMessage = () => {
+      fetchUnread()
+    }
+    const handleConversationUpdated = () => {
+      fetchUnread()
+    }
+
+    socket.on('new-message', handleNewMessage)
+    socket.on('conversation-updated', handleConversationUpdated)
+
+    return () => {
+      socket.off('new-message', handleNewMessage)
+      socket.off('conversation-updated', handleConversationUpdated)
+    }
+  }, [user])
 
   const handleLogout = () => {
     logout()
@@ -161,7 +200,7 @@ export default function Sidebar({
                   </p>
                 )}
                 <nav className="space-y-1.5">
-                  {section.items.map(({ name, path, icon: Icon, description }) => (
+                  {section.items.map(({ name, path, icon: Icon, description, hasBadge }) => (
                     <NavLink key={path} to={path} onClick={() => mobile && closeSidebar?.()}>
                       {({ isActive }) => (
                         <motion.div
@@ -177,25 +216,35 @@ export default function Sidebar({
                             <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-gradient-to-b from-indigo-400 to-cyan-400" />
                           )}
                           <div
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[18px] transition ${
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[18px] relative transition ${
                               isActive
                                 ? 'bg-indigo-500/14 text-indigo-100'
                                 : 'bg-white/[0.03] text-slate-400 group-hover:bg-white/[0.05] group-hover:text-slate-200'
                             }`}
                           >
                             <Icon size={18} />
+                            {hasBadge && unreadCount > 0 && isCollapsed && (
+                              <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-indigo-500 ring-2 ring-slate-950 animate-pulse" />
+                            )}
                           </div>
                           {!isCollapsed && (
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">{name}</p>
-                              <p className="truncate text-xs text-slate-500">{description}</p>
+                            <div className="flex-1 min-w-0 flex items-center justify-between">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">{name}</p>
+                                <p className="truncate text-xs text-slate-500">{description}</p>
+                              </div>
+                              {hasBadge && unreadCount > 0 && (
+                                <span className="rounded-full bg-indigo-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                                  {unreadCount}
+                                </span>
+                              )}
                             </div>
                           )}
 
                           {/* Tooltip when collapsed */}
                           {isCollapsed && (
                             <div className="pointer-events-none absolute left-[72px] z-50 whitespace-nowrap rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-200 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
-                              {name}
+                              {name} {hasBadge && unreadCount > 0 ? `(${unreadCount})` : ''}
                             </div>
                           )}
                         </motion.div>

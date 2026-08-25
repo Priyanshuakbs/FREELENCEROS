@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const Client = require('../models/Client');
 const User = require('../models/User');
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('../utils/emailUtil');
 const { protect, adminOnly } = require('../middleware/auth');
 
 // In-memory token store (for development — use Redis in production)
@@ -75,14 +75,8 @@ router.post('/submit/:token', async (req, res) => {
     // Notify admin via email
     try {
       const admin = await User.findById(data.freelancer);
-      if (admin && process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST || 'smtp.gmail.com',
-          port: Number(process.env.SMTP_PORT) || 587,
-          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-        });
-        await transporter.sendMail({
-          from: `"FreelanceOS" <${process.env.SMTP_USER}>`,
+      if (admin) {
+        await sendEmail({
           to: admin.email,
           subject: `🎉 New Client Onboarded: ${name}`,
           html: `
@@ -98,6 +92,7 @@ router.post('/submit/:token', async (req, res) => {
               <p style="color:#888;font-size:12px;">Auto-created by FreelanceOS Onboarding</p>
             </div>
           `,
+          text: `New client onboarded: ${name} (${email})`,
         });
       }
     } catch (emailErr) {

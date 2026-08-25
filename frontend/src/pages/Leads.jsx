@@ -398,6 +398,7 @@ export default function Leads() {
                   <label className="mb-2 block text-sm text-slate-300">Follow Up Date</label>
                   <input
                     type="date"
+                    min={new Date().toISOString().split('T')[0]}
                     className="input-shell w-full"
                     value={form.followUpDate}
                     onChange={(e) => setForm({ ...form, followUpDate: e.target.value })}

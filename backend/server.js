@@ -59,8 +59,36 @@ io.on('connection', (socket) => {
   console.log('🔌 Socket connected:', socket.id);
 
   socket.on('join-room', (userId) => {
-    socket.join(userId);
-    console.log(`👤 User ${userId} joined their room`);
+    if (userId) {
+      socket.join(userId.toString());
+      console.log(`👤 User/Client ${userId} joined their room`);
+    }
+  });
+
+  socket.on('join-conversation', (conversationId) => {
+    if (conversationId) {
+      socket.join(`conversation-${conversationId}`);
+      console.log(`💬 Socket ${socket.id} joined conversation-${conversationId}`);
+    }
+  });
+
+  socket.on('leave-conversation', (conversationId) => {
+    if (conversationId) {
+      socket.leave(`conversation-${conversationId}`);
+      console.log(`💬 Socket ${socket.id} left conversation-${conversationId}`);
+    }
+  });
+
+  socket.on('typing', ({ conversationId, userName }) => {
+    if (conversationId) {
+      socket.to(`conversation-${conversationId}`).emit('user-typing', { conversationId, userName });
+    }
+  });
+
+  socket.on('stop-typing', ({ conversationId }) => {
+    if (conversationId) {
+      socket.to(`conversation-${conversationId}`).emit('user-stop-typing', { conversationId });
+    }
   });
 
   socket.on('disconnect', () => {
@@ -79,7 +107,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Strict CORS Setup
 app.use(cors({
   origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || isVercelOrigin(origin) || (process.env.NODE_ENV === 'development' && isLocalDevOrigin(origin))) {
+    if (!origin || allowedOrigins.includes(origin) || isVercelOrigin(origin) || isLocalDevOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Blocked by CORS policy'));
@@ -121,6 +149,8 @@ app.use('/api/timelogs', require('./routes/timeLogs'));
 app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/contracts', require('./routes/contracts'));
+app.use('/api/conversations', require('./routes/conversations'));
+app.use('/api/freelancers', require('./routes/freelancers'));
 app.use('/api/chatbot', require('./routes/chatbot'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/auth', require('./routes/auth'));

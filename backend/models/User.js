@@ -33,6 +33,19 @@ const userSchema = new mongoose.Schema({
   upiId: { type: String, default: '' },
   gstNumber: { type: String, default: '' },
   businessRegistrationNumber: { type: String, default: '' },
+  // Public Portfolio fields
+  username: { type: String, trim: true, lowercase: true, sparse: true },
+  skills: [{ type: String, trim: true }],
+  services: [{ type: String, trim: true }],
+  experience: { type: String, default: '' },
+  portfolioProjects: [{
+    title: { type: String, required: true },
+    description: { type: String, default: '' },
+    technologies: [{ type: String, trim: true }],
+    liveUrl: { type: String, default: '' },
+    githubUrl: { type: String, default: '' },
+    imageUrl: { type: String, default: '' },
+  }],
 }, { timestamps: true });
 
 userSchema.pre('save', async function() {

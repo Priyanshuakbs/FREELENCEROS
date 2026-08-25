@@ -3,7 +3,7 @@ import axios from 'axios'
 let envUrl = import.meta.env.VITE_API_URL;
 let rawBaseURL = (envUrl && (envUrl.startsWith('http://') || envUrl.startsWith('https://'))) 
   ? envUrl 
-  : 'https://freelenceros.onrender.com/api';
+  : 'http://localhost:5000/api';
 
 if (!rawBaseURL.endsWith('/api') && !rawBaseURL.endsWith('/api/')) {
   rawBaseURL = rawBaseURL.endsWith('/') ? `${rawBaseURL}api` : `${rawBaseURL}/api`;
@@ -33,10 +33,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const path = window.location.pathname
+      if (path.startsWith('/portfolio') || path.startsWith('/freelancers') || path.startsWith('/proposal-accepted') || path.startsWith('/portal')) {
+        return Promise.reject(error)
+      }
       localStorage.removeItem('auth-storage')
       localStorage.removeItem('client-auth-storage')
       
-      if (window.location.pathname.startsWith('/client')) {
+      if (path.startsWith('/client')) {
         window.location.href = '/client-login'
       } else {
         window.location.href = '/login'

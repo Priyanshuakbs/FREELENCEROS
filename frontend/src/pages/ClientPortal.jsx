@@ -29,7 +29,7 @@ export default function ClientPortal() {
 
   const fetchPublicProject = async () => {
     try {
-      const apiURL = import.meta.env.VITE_API_URL || 'https://freelenceros.onrender.com/api'
+      const apiURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
       const { data } = await axios.get(`${apiURL}/projects/portal/${token}`)
       setProject(data.project)
       setInvoices(data.invoices || [])
@@ -67,7 +67,7 @@ export default function ClientPortal() {
         return
       }
 
-      const apiURL = import.meta.env.VITE_API_URL || 'https://freelenceros.onrender.com/api'
+      const apiURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
       const { data } = await axios.post(`${apiURL}/projects/portal/${token}/invoices/${invoice._id}/razorpay-order`)
 
       const options = {
@@ -311,7 +311,7 @@ export default function ClientPortal() {
                     paid: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
                     overdue: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
                   }
-                  const apiURL = import.meta.env.VITE_API_URL || 'https://freelenceros.onrender.com/api'
+                  const apiURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
                   const pdfUrl = `${apiURL}/projects/portal/${token}/invoices/${invoice._id}/pdf`
 
                   return (
@@ -378,5 +378,4 @@ export default function ClientPortal() {
     </div>
   )
 }
-
 

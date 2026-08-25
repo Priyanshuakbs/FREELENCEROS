@@ -1,6 +1,6 @@
 const Invoice = require('../models/Invoice');
 const puppeteer = require('puppeteer');
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('../utils/emailUtil');
 
 const generateInvoiceNumber = () => {
   const date = new Date();
@@ -228,61 +228,41 @@ exports.sendReminderEmail = async (req, res) => {
       return res.status(400).json({ message: 'Client email is missing' });
     }
 
-    // Configure SMTP transporter
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-      port: Number(process.env.SMTP_PORT) || 587,
-      auth: {
-        user: process.env.SMTP_USER || 'demo_user',
-        pass: process.env.SMTP_PASS || 'demo_pass',
-      },
-    });
+    const html = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 8px;">
+        <h2 style="color: #4f46e5; border-bottom: 1px solid #eee; padding-bottom: 10px;">Payment Reminder</h2>
+        <p>Dear <strong>${invoice.client.name}</strong>,</p>
+        <p>This is a friendly reminder that invoice <strong>${invoice.invoiceNumber}</strong> is currently outstanding.</p>
 
-    const isMock = !process.env.SMTP_HOST || process.env.SMTP_HOST === 'smtp.ethereal.email';
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <tr style="background: #f9fafb;">
+            <th style="padding: 10px; text-align: left; border-bottom: 1px solid #eee;">Invoice No.</th>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">${invoice.invoiceNumber}</td>
+          </tr>
+          <tr>
+            <th style="padding: 10px; text-align: left; border-bottom: 1px solid #eee;">Amount Due</th>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #4f46e5;">₹${invoice.total.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr style="background: #f9fafb;">
+            <th style="padding: 10px; text-align: left; border-bottom: 1px solid #eee;">Due Date</th>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-IN') : 'Upon receipt'}</td>
+          </tr>
+        </table>
 
-    const mailOptions = {
-      from: `"${req.user.name}" <${req.user.email}>`,
+        <p>Please settle this invoice at your earliest convenience. If you have already made the payment, please disregard this email.</p>
+        <p style="margin-top: 30px; font-size: 13px; color: #777;">Thank you for your business!</p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin-top: 20px;" />
+        <p style="font-size: 11px; color: #999; text-align: center;">Sent via FreelanceOS</p>
+      </div>
+    `;
+
+    await sendEmail({
       to: invoice.client.email,
       subject: `📢 Payment Reminder: Invoice ${invoice.invoiceNumber}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 8px;">
-          <h2 style="color: #4f46e5; border-bottom: 1px solid #eee; padding-bottom: 10px;">Payment Reminder</h2>
-          <p>Dear <strong>${invoice.client.name}</strong>,</p>
-          <p>This is a friendly reminder that invoice <strong>${invoice.invoiceNumber}</strong> is currently outstanding.</p>
-          
-          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-            <tr style="background: #f9fafb;">
-              <th style="padding: 10px; text-align: left; border-bottom: 1px solid #eee;">Invoice No.</th>
-              <td style="padding: 10px; border-bottom: 1px solid #eee;">${invoice.invoiceNumber}</td>
-            </tr>
-            <tr>
-              <th style="padding: 10px; text-align: left; border-bottom: 1px solid #eee;">Amount Due</th>
-              <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold; color: #4f46e5;">₹${invoice.total.toLocaleString('en-IN')}</td>
-            </tr>
-            <tr style="background: #f9fafb;">
-              <th style="padding: 10px; text-align: left; border-bottom: 1px solid #eee;">Due Date</th>
-              <td style="padding: 10px; border-bottom: 1px solid #eee;">${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-IN') : 'Upon receipt'}</td>
-            </tr>
-          </table>
+      html,
+      text: `Payment reminder for invoice ${invoice.invoiceNumber}. Amount due: ₹${invoice.total.toLocaleString('en-IN')}.`,
+    });
 
-          <p>Please settle this invoice at your earliest convenience. If you have already made the payment, please disregard this email.</p>
-          <p style="margin-top: 30px; font-size: 13px; color: #777;">Thank you for your business!</p>
-          <hr style="border: 0; border-top: 1px solid #eee; margin-top: 20px;" />
-          <p style="font-size: 11px; color: #999; text-align: center;">Sent via FreelanceOS</p>
-        </div>
-      `,
-    };
-
-    if (isMock) {
-      console.log('--- SMTP not configured. Simulating email dispatch ---');
-      console.log('To:', mailOptions.to);
-      console.log('Subject:', mailOptions.subject);
-      console.log('----------------------------------------------------');
-      await new Promise(resolve => setTimeout(resolve, 800));
-      return res.json({ message: 'Reminder email sent! (Simulated Mode - Connect real SMTP in .env)' });
-    }
-
-    await transporter.sendMail(mailOptions);
     res.json({ message: 'Reminder email sent successfully!' });
 
   } catch (err) {
@@ -653,4 +633,4 @@ exports.verifyPublicInvoiceRazorpayPayment = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-};
+};

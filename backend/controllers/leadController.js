@@ -1,5 +1,8 @@
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const Lead = require('../models/Lead');
 const Client = require('../models/Client');
+const Conversation = require('../models/Conversation');
 const { sendEmail } = require('../utils/emailUtil');
 
 const sendProposalEmailHelper = async (lead, req) => {
@@ -7,7 +10,6 @@ const sendProposalEmailHelper = async (lead, req) => {
     throw new Error('Lead email is required to send proposal');
   }
 
-  const crypto = require('crypto');
   const token = crypto.randomBytes(32).toString('hex');
   lead.proposalToken = token;
   lead.proposalTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
@@ -225,19 +227,24 @@ exports.convertLeadToClient = async (req, res) => {
     const lead = await Lead.findOne({ _id: req.params.id, createdBy: req.user._id });
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
-    if (lead.isConverted) {
+    if (lead.isConverted && lead.convertedClient) {
       return res.status(400).json({ success: false, message: 'Lead already converted' });
     }
 
-    const client = await Client.create({
-      freelancer: req.user._id,
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone,
-      company: lead.company,
-      notes: lead.requirements || '',
-      totalProjectAmount: lead.budget || 0,
-    });
+    let client = await Client.findOne({ email: lead.email?.toLowerCase(), freelancer: req.user._id });
+    if (!client) {
+      client = await Client.create({
+        freelancer: req.user._id,
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone,
+        company: lead.company,
+        notes: lead.requirements || '',
+        totalProjectAmount: lead.budget || 0,
+        allowLogin: true,
+        isVerified: true,
+      });
+    }
 
     lead.isConverted = true;
     lead.status = 'Converted';
@@ -254,124 +261,153 @@ exports.convertLeadToClient = async (req, res) => {
 exports.acceptProposal = async (req, res) => {
   try {
     const { token } = req.params;
+    const host = req.get('host') || '';
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const frontendUrl = process.env.FRONTEND_URL || (isLocal ? 'http://localhost:5174' : 'http://localhost:5174');
+    const isApiRequest = req.xhr || req.headers.accept?.includes('json') || req.method === 'POST';
+
+    // Find lead by proposal token
     const lead = await Lead.findOne({
       proposalToken: token,
       proposalTokenExpires: { $gt: Date.now() },
-    }).populate('createdBy', 'name email');
+    }).populate('createdBy', 'name email avatar');
 
     if (!lead) {
-      return res.status(404).send(`
-        <html>
-          <head>
-            <title>Proposal Link Invalid</title>
-            <style>
-              body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f8fafc; margin: 0; }
-              .card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; max-width: 400px; }
-              h1 { color: #ef4444; margin-top: 0; }
-              p { color: #475569; line-height: 1.5; }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <h1>Link Invalid or Expired</h1>
-              <p>The proposal link is invalid, has expired, or has already been used.</p>
-            </div>
-          </body>
-        </html>
-      `);
+      if (isApiRequest) {
+        return res.status(404).json({ success: false, message: 'Proposal link invalid or expired' });
+      }
+      return res.redirect(`${frontendUrl}/proposal-accepted?error=true`);
     }
 
-    if (lead.proposalAccepted) {
-      return res.status(400).send(`
-        <html>
-          <head>
-            <title>Proposal Already Accepted</title>
-            <style>
-              body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f8fafc; margin: 0; }
-              .card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; max-width: 400px; }
-              h1 { color: #3b82f6; margin-top: 0; }
-              p { color: #475569; line-height: 1.5; }
-            </style>
-          </head>
-          <body>
-            <div class="card">
-              <h1>Already Accepted</h1>
-              <p>This proposal was already accepted on ${new Date(lead.proposalAcceptedAt).toLocaleString()}.</p>
-            </div>
-          </body>
-        </html>
-      `);
+    // Find or create Client record
+    let client = null;
+    if (lead.email) {
+      client = await Client.findOne({
+        email: lead.email.toLowerCase(),
+        freelancer: lead.createdBy._id,
+      });
     }
 
+    if (!client) {
+      client = await Client.create({
+        freelancer: lead.createdBy._id,
+        name: lead.name,
+        email: lead.email ? lead.email.toLowerCase() : `client-${lead._id}@freelanceos.local`,
+        phone: lead.phone || '',
+        company: lead.company || '',
+        notes: lead.requirements || '',
+        totalProjectAmount: lead.budget || 0,
+        allowLogin: true,
+        isVerified: true,
+      });
+    }
+
+    // Update lead status
     lead.proposalAccepted = true;
-    lead.proposalAcceptedAt = new Date();
+    lead.proposalAcceptedAt = lead.proposalAcceptedAt || new Date();
     lead.status = 'Negotiation';
+    lead.convertedClient = client._id;
     await lead.save();
 
-    // Send email to freelancer
-    const freelancerEmail = lead.createdBy.email;
-    const htmlContent = `
-      <div style="font-family: Arial, sans-serif; padding: 25px; color: #333; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ecfdf5;">
-        <h2 style="color: #047857; border-bottom: 2px solid #a7f3d0; padding-bottom: 10px; margin-top: 0;">Proposal Accepted! 🎉</h2>
-        <p>Hi ${lead.createdBy.name},</p>
-        <p>Great news! The lead <strong>${lead.name}</strong> from <strong>${lead.company || 'N/A'}</strong> has accepted your proposal.</p>
-        <p>You can now proceed with negotiation or converting them to a client.</p>
-        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
-        <p style="font-size: 11px; color: #94a3b8; text-align: center;">FreelanceOS Notifications</p>
-      </div>
-    `;
+    // Find or create Conversation
+    let conversation = await Conversation.findOne({
+      freelancer: lead.createdBy._id,
+      $or: [{ lead: lead._id }, { client: client._id }],
+    });
 
+    if (!conversation) {
+      conversation = new Conversation({
+        participants: [
+          { id: lead.createdBy._id, model: 'User' },
+          { id: client._id, model: 'Client' },
+        ],
+        freelancer: lead.createdBy._id,
+        client: client._id,
+        lead: lead._id,
+        context: {
+          type: 'proposal',
+          title: lead.requirements || lead.company || `${lead.name}'s Project`,
+          budget: lead.budget || 0,
+          status: 'Negotiation',
+        },
+        unreadCounts: { freelancer: 0, client: 0 },
+      });
+      await conversation.save();
+    }
+
+    // Generate JWT token for client so client can authenticate
+    const clientToken = jwt.sign(
+      { id: client._id, role: 'client' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    // Send email notification to freelancer (if not previously sent)
     try {
+      const freelancerEmail = lead.createdBy.email;
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; padding: 25px; color: #333; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ecfdf5;">
+          <h2 style="color: #047857; border-bottom: 2px solid #a7f3d0; padding-bottom: 10px; margin-top: 0;">Proposal Accepted! 🎉</h2>
+          <p>Hi ${lead.createdBy.name},</p>
+          <p>Great news! <strong>${lead.name}</strong> from <strong>${lead.company || 'N/A'}</strong> has accepted your proposal.</p>
+          <p>A direct conversation has been opened in your Messages workspace. You can now chat directly with your client.</p>
+          <div style="margin: 25px 0; text-align: center;">
+            <a href="${frontendUrl}/messages/${conversation._id}" style="background-color: #047857; color: white; padding: 12px 30px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Open Conversation</a>
+          </div>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
+          <p style="font-size: 11px; color: #94a3b8; text-align: center;">FreelanceOS Notifications</p>
+        </div>
+      `;
+
       await sendEmail({
         to: freelancerEmail,
         subject: `🎉 Proposal Accepted - ${lead.name}`,
         html: htmlContent,
-        text: `Proposal accepted by ${lead.name} from ${lead.company || 'N/A'}.`,
+        text: `Proposal accepted by ${lead.name}. Open conversation: ${frontendUrl}/messages/${conversation._id}`,
       });
     } catch (mailErr) {
       console.error('Failed to notify freelancer about accepted proposal:', mailErr.message);
     }
 
-    // Notify via Socket.io if available
+    // Notify via Socket.io
     const io = req.app.get('io');
     if (io) {
       io.to(lead.createdBy._id.toString()).emit('notification', {
-        title: 'Proposal Accepted',
-        message: `${lead.name} has accepted your proposal!`,
+        title: 'Proposal Accepted 🎉',
+        message: `${lead.name} accepted your proposal!`,
         leadId: lead._id,
+        conversationId: conversation._id,
       });
     }
 
-    res.status(200).send(`
-      <html>
-        <head>
-          <title>Proposal Accepted</title>
-          <style>
-            body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #ecfdf5; margin: 0; }
-            .card { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; max-width: 400px; border: 1px solid #a7f3d0; }
-            h1 { color: #059669; margin-top: 0; }
-            p { color: #374151; line-height: 1.5; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>Thank You!</h1>
-            <p>You have successfully accepted the proposal. The freelancer has been notified, and we will get back to you soon.</p>
-          </div>
-        </body>
-      </html>
-    `);
+    if (isApiRequest) {
+      return res.status(200).json({
+        success: true,
+        proposalStatus: 'Accepted',
+        leadStatus: 'Negotiation',
+        conversationId: conversation._id,
+        clientToken,
+        client: {
+          id: client._id,
+          name: client.name,
+          email: client.email,
+          company: client.company,
+          role: 'client',
+        },
+      });
+    }
+
+    // Redirect to frontend Proposal Accepted / Chat page with tokens
+    return res.redirect(
+      `${frontendUrl}/proposal-accepted?name=${encodeURIComponent(lead.name)}&company=${encodeURIComponent(lead.company || '')}&freelancer=${encodeURIComponent(lead.createdBy.name || 'Freelancer')}&conversationId=${conversation._id}&clientToken=${encodeURIComponent(clientToken)}&clientId=${client._id}&leadId=${lead._id}`
+    );
+
   } catch (err) {
-    res.status(500).send(`
-      <html>
-        <head>
-          <title>Server Error</title>
-        </head>
-        <body>
-          <h1>Internal Server Error</h1>
-          <p>${err.message}</p>
-        </body>
-      </html>
-    `);
+    console.error('Accept proposal error:', err.message);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    if (req.xhr || req.headers.accept?.includes('json') || req.method === 'POST') {
+      return res.status(500).json({ success: false, message: 'Unable to accept proposal. Please try again.' });
+    }
+    return res.redirect(`${frontendUrl}/proposal-accepted?error=true`);
   }
 };
