@@ -148,8 +148,7 @@ export default function ClientVerifyEmail() {
               <button
                 type="submit"
                 disabled={loading || otp.length !== 6 || !email}
-                className="btn-primary w-full justify-center disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, var(--primary), var(--secondary))' }}
+                className="btn-primary w-full justify-center !text-white !bg-gradient-to-r !from-indigo-600 !to-purple-600 hover:!from-indigo-500 hover:!to-purple-500 shadow-lg shadow-indigo-500/25 disabled:opacity-50 font-bold py-3 px-4 rounded-2xl transition"
               >
                 {loading ? 'Verifying Code...' : 'Verify Email'}
               </button>
@@ -166,8 +165,7 @@ export default function ClientVerifyEmail() {
             </div>
             <button
               onClick={handleProceed}
-              className="btn-primary w-full justify-center"
-              style={{ background: 'linear-gradient(135deg, var(--primary), var(--secondary))' }}
+              className="btn-primary w-full justify-center !text-white !bg-gradient-to-r !from-indigo-600 !to-purple-600 hover:!from-indigo-500 hover:!to-purple-500 shadow-lg shadow-indigo-500/25 font-bold py-3 px-4 rounded-2xl transition"
             >
               Continue to Dashboard
             </button>

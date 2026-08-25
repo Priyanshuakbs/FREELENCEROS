@@ -29,6 +29,8 @@
   --text-faint:       #64748b;
 
   /* Brand */
+  --primary:          #6366f1;
+  --secondary:        #8b5cf6;
   --indigo:           #6366f1;
   --violet:           #8b5cf6;
   --cyan:             #06b6d4;
@@ -60,7 +62,14 @@ html[data-theme='light'] {
   --text:             #0f172a;
   --text-muted:       #334155;
   --text-subtle:      #64748b;
-  --text-faint:       #94a3b8;
+  /* Brand */
+  --primary:          #6366f1;
+  --secondary:        #8b5cf6;
+  --indigo:           #6366f1;
+  --violet:           #8b5cf6;
+  --cyan:             #06b6d4;
+  --emerald:          #22c55e;
+  --rose:             #f43f5e;
 
   --tooltip-bg:       #ffffff;
   --tooltip-border:   rgba(15, 23, 42, 0.12);

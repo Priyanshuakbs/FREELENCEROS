@@ -208,8 +208,7 @@ export default function ClientRegister() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary mt-3 w-full justify-center disabled:opacity-50 flex items-center gap-2"
-            style={{ background: 'linear-gradient(135deg, var(--primary), var(--secondary))' }}
+            className="btn-primary mt-3 w-full justify-center !text-white !bg-gradient-to-r !from-indigo-600 !to-purple-600 hover:!from-indigo-500 hover:!to-purple-500 shadow-lg shadow-indigo-500/25 disabled:opacity-50 flex items-center gap-2 py-3 px-4 rounded-2xl font-bold transition"
           >
             <span>{loading ? 'Creating Client Account...' : 'Create Client Account'}</span>
             <ArrowRight size={16} />
