@@ -153,7 +153,13 @@ export default function Landing() {
             onClick={() => navigate('/freelancers')}
             className="text-indigo-400 hover:text-indigo-300 transition-colors text-xs font-semibold px-3 py-2 flex items-center gap-1"
           >
-            <span>Explore Freelancers</span>
+            <span>Explore Talent</span>
+          </button>
+          <button
+            onClick={() => navigate('/client-login')}
+            className="text-purple-400 hover:text-purple-300 transition-colors text-xs font-semibold px-2.5 py-2 hidden sm:block"
+          >
+            Client Portal
           </button>
           <button
             onClick={() => navigate('/login')}

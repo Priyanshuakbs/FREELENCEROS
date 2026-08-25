@@ -66,6 +66,13 @@ export default function PublicPortfolio() {
     fetchProfile()
   }, [identifier])
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('action') === 'contact' && isAuthenticated) {
+      setShowContactModal(true)
+    }
+  }, [isAuthenticated])
+
   const fetchProfile = async () => {
     try {
       setLoading(true)

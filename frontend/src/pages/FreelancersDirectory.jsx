@@ -154,12 +154,20 @@ export default function FreelancersDirectory() {
                 <span>Workspace Dashboard</span>
               </button>
             ) : (
-              <button
-                onClick={() => navigate('/client-login')}
-                className="btn-primary py-2 px-4 text-xs font-semibold"
-              >
-                Client Login
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigate('/client-login')}
+                  className="btn-secondary py-2 px-3 text-xs font-semibold"
+                >
+                  Client Sign In
+                </button>
+                <button
+                  onClick={() => navigate('/client-register')}
+                  className="btn-primary py-2 px-3.5 text-xs font-semibold"
+                >
+                  Join as Client
+                </button>
+              </div>
             )}
           </div>
         </div>

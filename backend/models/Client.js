@@ -36,7 +36,7 @@ const clientSchema = new mongoose.Schema({
   amountPaid: { type: Number, default: 0 },
   remainingAmount: { type: Number, default: 0 },
   paymentStatus: { type: String, enum: ['pending', 'partial', 'paid'], default: 'pending' },
-  freelancer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  freelancer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   payments: [paymentRecordSchema],
 }, { timestamps: true });

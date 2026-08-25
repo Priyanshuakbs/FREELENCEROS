@@ -558,6 +558,80 @@ exports.clientResetPassword = async (req, res) => {
   }
 };
 
+exports.clientRegister = async (req, res) => {
+  try {
+    const { name, email, password, company, phone } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email, and password are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const existingClient = await Client.findOne({ email: cleanEmail, isArchived: { $ne: true } });
+    if (existingClient) {
+      return res.status(400).json({ message: 'A client account with this email already exists' });
+    }
+
+    const verificationOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationOTPExpires = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    const client = await Client.create({
+      name: name.trim(),
+      email: cleanEmail,
+      password,
+      company: company?.trim() || '',
+      phone: phone?.trim() || '',
+      allowLogin: true,
+      isVerified: false,
+      verificationOTP,
+      verificationOTPExpires,
+    });
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; padding: 25px; color: #333; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #faf5ff;">
+        <h2 style="color: #6366f1; border-bottom: 2px solid #e9d5ff; padding-bottom: 10px; margin-top: 0;">Welcome to FreelanceOS Client Portal! 🤝</h2>
+        <p>Hi <strong>${name}</strong>,</p>
+        <p>Thank you for creating your client account on FreelanceOS. Enter the verification code (OTP) below to verify your email and begin collaborating with top talent:</p>
+        <div style="margin: 25px 0; text-align: center;">
+          <span style="background-color: #6366f1; color: white; padding: 12px 30px; font-size: 24px; font-weight: bold; letter-spacing: 5px; border-radius: 8px; display: inline-block;">${verificationOTP}</span>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">Enter this 6-digit code on the verification screen to activate your account.</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
+        <p style="font-size: 11px; color: #94a3b8; text-align: center;">This code is valid for 15 minutes.</p>
+      </div>
+    `;
+
+    try {
+      await sendEmail({
+        to: cleanEmail,
+        subject: '📧 Verify Your Client Account - FreelanceOS',
+        html: htmlContent,
+        text: `Welcome to FreelanceOS! Your client verification code is: ${verificationOTP}`,
+      });
+    } catch (mailErr) {
+      console.error('Failed to send client verification email:', mailErr.message);
+    }
+
+    res.status(201).json({
+      token: generateToken(client._id, 'client'),
+      client: {
+        id: client._id,
+        name: client.name,
+        email: client.email,
+        company: client.company,
+        role: 'client',
+        isVerified: client.isVerified,
+      },
+    });
+  } catch (err) {
+    console.error('Client Register error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.clientVerifyOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -565,7 +639,7 @@ exports.clientVerifyOTP = async (req, res) => {
       return res.status(400).json({ message: 'Email and OTP are required.' });
     }
 
-    const client = await Client.findOne({ email: email.toLowerCase(), isArchived: { $ne: true } });
+    const client = await Client.findOne({ email: email.toLowerCase().trim(), isArchived: { $ne: true } });
     if (!client) {
       return res.status(404).json({ message: 'Client not found.' });
     }
@@ -583,9 +657,63 @@ exports.clientVerifyOTP = async (req, res) => {
     client.verificationOTPExpires = undefined;
     await client.save();
 
-    res.json({ message: 'Email verified successfully!' });
+    res.json({
+      message: 'Email verified successfully!',
+      token: generateToken(client._id, 'client'),
+      client: {
+        id: client._id,
+        name: client.name,
+        email: client.email,
+        company: client.company,
+        role: 'client',
+        isVerified: true,
+      },
+    });
   } catch (err) {
     console.error('Client Verification error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.clientResendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const client = await Client.findOne({ email: email.toLowerCase().trim(), isArchived: { $ne: true } });
+    if (!client) return res.status(404).json({ message: 'Client not found' });
+
+    if (client.isVerified) {
+      return res.status(400).json({ message: 'Email is already verified' });
+    }
+
+    const verificationOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    client.verificationOTP = verificationOTP;
+    client.verificationOTPExpires = Date.now() + 15 * 60 * 1000;
+    await client.save();
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; padding: 25px; color: #333; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #faf5ff;">
+        <h2 style="color: #6366f1; border-bottom: 2px solid #e9d5ff; padding-bottom: 10px; margin-top: 0;">Verify Your Client Account 🤝</h2>
+        <p>Hi <strong>${client.name}</strong>,</p>
+        <p>We received a request to resend your email verification code. Use the code below:</p>
+        <div style="margin: 25px 0; text-align: center;">
+          <span style="background-color: #6366f1; color: white; padding: 12px 30px; font-size: 24px; font-weight: bold; letter-spacing: 5px; border-radius: 8px; display: inline-block;">${verificationOTP}</span>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">This code is valid for 15 minutes.</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: client.email,
+      subject: '📧 Resend: Verify Your Client Account - FreelanceOS',
+      html: htmlContent,
+      text: `Your verification code is: ${verificationOTP}`,
+    });
+
+    res.json({ message: 'Verification OTP sent successfully!' });
+  } catch (err) {
+    console.error('Client Resend error:', err.message);
     res.status(500).json({ message: err.message });
   }
 };

@@ -93,9 +93,22 @@ export default function ClientLogin() {
           </button>
         </form>
 
-        <div className="mt-8 flex flex-col gap-2 text-center text-xs" style={{ borderTop: '1px solid var(--border-soft)', paddingTop: '16px' }}>
-          <Link to="/client-verify" className="font-semibold text-purple-400 transition hover:text-purple-300">Verify client email (OTP)</Link>
-          <Link to="/login" className="font-medium text-slate-400 transition hover:text-slate-300">Are you a freelancer? Login here</Link>
+        <div className="mt-8 flex flex-col gap-2.5 text-center text-xs" style={{ borderTop: '1px solid var(--border-soft)', paddingTop: '16px' }}>
+          <p style={{ color: 'var(--text-subtle)' }}>
+            Don't have a client account?{' '}
+            <Link to="/client-register" className="font-semibold text-purple-400 transition hover:text-purple-300">
+              Sign up as Client
+            </Link>
+          </p>
+          <div className="flex items-center justify-center gap-3 pt-1">
+            <Link to="/client-verify" className="font-medium text-slate-400 transition hover:text-purple-300">
+              Verify email (OTP)
+            </Link>
+            <span className="text-slate-600">•</span>
+            <Link to="/login" className="font-medium text-slate-400 transition hover:text-slate-300">
+              Freelancer Login
+            </Link>
+          </div>
         </div>
       </div>
     </AnimatedPage>

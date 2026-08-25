@@ -33,6 +33,7 @@ import LeadDetails from './pages/LeadDetails'
 
 // Client Portal Pages
 import ClientLogin from './pages/ClientLogin'
+import ClientRegister from './pages/ClientRegister'
 import ClientForgotPassword from './pages/ClientForgotPassword'
 import ClientResetPassword from './pages/ClientResetPassword'
 import ClientVerifyEmail from './pages/ClientVerifyEmail'
@@ -213,6 +214,7 @@ export default function App() {
         {/* ---------------- Client Dashboard Routes ---------------- */}
 
         <Route path="/client-login" element={<ClientLogin />} />
+        <Route path="/client-register" element={<ClientRegister />} />
         
         <Route path="/client-forgot-password" element={<ClientForgotPassword />} />
         
