@@ -364,7 +364,8 @@ exports.forgotPassword = async (req, res) => {
     user.resetPasswordExpire = Date.now() + 3600000; // Token valid for 1 hour
     await user.save();
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    // Use env var or fall back to the live production frontend URL
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://freelenceros.vercel.app').replace(/\/+$/, '');
     const resetLink = `${frontendUrl}/reset-password/${resetToken}`;
 
     const htmlContent = `
@@ -383,12 +384,18 @@ exports.forgotPassword = async (req, res) => {
       </div>
     `;
 
-    await sendEmail({
-      to: email,
-      subject: '🔒 Reset Password Request - FreelanceOS',
-      html: htmlContent,
-      text: `Reset your FreelanceOS password here: ${resetLink}`
-    });
+    // Send email — but don't crash if it fails (e.g. missing env vars)
+    try {
+      await sendEmail({
+        to: email,
+        subject: '🔒 Reset Password Request - FreelanceOS',
+        html: htmlContent,
+        text: `Reset your FreelanceOS password here: ${resetLink}`
+      });
+    } catch (emailErr) {
+      console.error('Forgot password email send failed:', emailErr.message);
+      // Still return success — token is saved, user can retry
+    }
 
     res.json({ message: 'Password reset link sent to your email.' });
   } catch (err) {
@@ -495,7 +502,7 @@ exports.clientForgotPassword = async (req, res) => {
     client.resetPasswordExpire = Date.now() + 3600000; // 1 hour
     await client.save();
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://freelenceros.vercel.app').replace(/\/+$/, '');
     const resetLink = `${frontendUrl}/client-reset-password/${resetToken}`;
 
     const htmlContent = `
@@ -514,12 +521,17 @@ exports.clientForgotPassword = async (req, res) => {
       </div>
     `;
 
-    await sendEmail({
-      to: email,
-      subject: '🔒 Reset Client Password Request - FreelanceOS',
-      html: htmlContent,
-      text: `Reset your FreelanceOS client password here: ${resetLink}`
-    });
+    // Send email — but don't crash if it fails
+    try {
+      await sendEmail({
+        to: email,
+        subject: '🔒 Reset Client Password Request - FreelanceOS',
+        html: htmlContent,
+        text: `Reset your FreelanceOS client password here: ${resetLink}`
+      });
+    } catch (emailErr) {
+      console.error('Client forgot password email failed:', emailErr.message);
+    }
 
     res.json({ message: 'Password reset link sent to your email.' });
   } catch (err) {
