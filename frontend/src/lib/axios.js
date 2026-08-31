@@ -1,14 +1,13 @@
 import axios from 'axios'
 
-const DEFAULT_API_URL = 'https://freelanceros-backend.onrender.com/api'
+const DEFAULT_API_URL = 'https://freelenceros.onrender.com/api'
 
-let envUrl = import.meta.env.VITE_API_URL;
-let rawBaseURL = (envUrl && (envUrl.startsWith('http://') || envUrl.startsWith('https://'))) 
-  ? envUrl 
-  : DEFAULT_API_URL;
+let envUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+let rawBaseURL = DEFAULT_API_URL;
 
-if (!rawBaseURL.endsWith('/api') && !rawBaseURL.endsWith('/api/')) {
-  rawBaseURL = rawBaseURL.endsWith('/') ? `${rawBaseURL}api` : `${rawBaseURL}/api`;
+if (envUrl && (envUrl.startsWith('http://') || envUrl.startsWith('https://'))) {
+  const cleanOrigin = envUrl.replace(/(\/api|\/auth)+$/i, '').replace(/\/+$/, '');
+  rawBaseURL = `${cleanOrigin}/api`;
 }
 
 const api = axios.create({
