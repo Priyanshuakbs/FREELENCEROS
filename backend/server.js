@@ -34,9 +34,21 @@ const logEmailConfigDiagnostics = () => {
 };
 
 // Socket.io setup
-const allowedOrigins = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : ['http://localhost:5173'];
+const normalizeOrigin = (value) => (value || '').trim().replace(/\/+$/, '');
+const allowedOrigins = [
+  normalizeOrigin(process.env.FRONTEND_URL),
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://localhost:4173',
+].filter(Boolean);
 const isLocalDevOrigin = (origin) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin);
-const isVercelOrigin = (origin) => origin && (origin.endsWith('.vercel.app') || origin === process.env.FRONTEND_URL);
+const isVercelOrigin = (origin) => {
+  const normalizedOrigin = normalizeOrigin(origin);
+  return !!normalizedOrigin && (normalizedOrigin.endsWith('.vercel.app') || allowedOrigins.includes(normalizedOrigin));
+};
 
 const io = new Server(server, {
   cors: {
@@ -107,7 +119,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Strict CORS Setup
 app.use(cors({
   origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || isVercelOrigin(origin) || isLocalDevOrigin(origin)) {
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (!origin || allowedOrigins.includes(normalizedOrigin) || isVercelOrigin(origin) || isLocalDevOrigin(normalizedOrigin)) {
       callback(null, true);
     } else {
       callback(new Error('Blocked by CORS policy'));
