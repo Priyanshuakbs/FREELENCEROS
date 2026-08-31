@@ -4,7 +4,7 @@ let socket = null
 
 export const getSocket = () => {
   if (!socket) {
-    const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+    const rawUrl = import.meta.env.VITE_API_URL || 'https://freelanceros-backend.onrender.com/api'
     const backendOrigin = rawUrl.replace(/\/api\/?$/, '')
 
     socket = io(backendOrigin, {
